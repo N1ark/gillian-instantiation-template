@@ -5,16 +5,16 @@ module Expr = Gillian.Gil_syntax.Expr
 type vt = Values.t
 
 type st = Subst.t
-type err_t = unit [@@deriving yojson]
+type err_t = unit [@@deriving show]
 
-type t = unit [@@deriving yojson]
+type t = unit
 
 type init_data = unit
 
 let init () = ()
 
 let copy () = ()
-type action_ret = ASucc of (t * vt list) | AFail of err_t list
+type action_ret = (t * vt list, err_t) result
 
 let execute_action _ _ _ = failwith "Implement here"
 

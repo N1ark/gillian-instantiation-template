@@ -1,3 +1,5 @@
 (library
  (name instantiation)
- (libraries gillian))
+ (libraries gillian)
+ (preprocess
+  (pps ppx_deriving.show)))

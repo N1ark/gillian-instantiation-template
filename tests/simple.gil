@@ -1,0 +1,16 @@
+proc symb_int() {
+  x := fresh_svar();
+  assume_type(x, Int);
+  ret := x;
+  return
+};
+
+proc main() {
+  x := "symb_int"();
+  y := "symb_int"();
+  assume(0i i<# x);
+  assume(0i i<# y);
+  assert(0i i<# (x i+ y));
+  ret := null;
+  return
+};
