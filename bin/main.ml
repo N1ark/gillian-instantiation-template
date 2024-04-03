@@ -2,7 +2,7 @@ open Gillian
 open Instantiation
 
 module Lifter (Verifier : Gillian.Abstraction.Verifier.S with type annot = Gil_syntax.Annot.Basic.t) =
-  Gillian.Debugger.Lifter.Gil_lifter.Make (ParserAndCompiler.Dummy) (Verifier) (Symbolic.Dummy_memory)
+  Gillian.Debugger.Lifter.Gil_lifter.Make (Symbolic.Dummy_memory) (ParserAndCompiler.Dummy) (Verifier)
     
 
 module CLI =
