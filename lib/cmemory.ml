@@ -16,7 +16,10 @@ let init () = ()
 let copy () = ()
 type action_ret = (t * vt list, err_t) result
 
-let execute_action _ _ _ = failwith "Implement here"
+
+(* val execute_action : action_name:string -> t -> vt list -> action_ret Delayed.t*)
+let execute_action (action_name:string) (_:t) (_:vt list) : action_ret =
+  failwith (Printf.sprintf "Implement here (CMem.execute_action %s)" action_name)
 
 let pp _ _ = ()
 

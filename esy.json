@@ -1,49 +1,46 @@
 {
-  "name": "gillian-instantiation-template",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Template to use if you want to instantiate Gillian",
-  "author": {
-    "name": "Sacha-Elie Ayoun",
-    "url": "https://www.doc.ic.ac.uk/~sja3417"
-  },
-  "homepage": "GillianPlatform.github.io",
-  "license": "BSD-3-Clause",
-  "esy": {
-    "build": "dune build -p instantiation @install",
-    "buildsInSource": "_build",
-    "exportedEnv": {
-      "INSTANTIATION_RUNTIME_PATH": {
-        "scope": "global",
-        "val": "#{self.share}/instantiation"
-      }
+    "name": "gillian-instantiation-template",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Template to use if you want to instantiate Gillian",
+    "author": {
+        "name": "Sacha-Elie Ayoun",
+        "url": "https://www.doc.ic.ac.uk/~sja3417"
+    },
+    "homepage": "GillianPlatform.github.io",
+    "license": "BSD-3-Clause",
+    "esy": {
+        "build": "dune build -p instantiation @install",
+        "buildsInSource": "_build",
+        "exportedEnv": {
+            "INSTANTIATION_RUNTIME_PATH": {
+                "scope": "global",
+                "val": "#{self.share}/instantiation"
+            }
+        }
+    },
+    "scripts": {
+        "watch": "dune build @install --watch",
+        "format-check": "dune build @fmt",
+        "format": "dune build @fmt --auto-promote",
+        "test": "dune test -j 4",
+        "clean": "dune clean"
+    },
+    "dependencies": {
+        "@opam/cmdliner": "^1.0.4",
+        "@opam/dune": "^3.6.1",
+        "@opam/fmt": "^0.8.8",
+        "@opam/ppx_deriving_yojson": "*",
+        "@opam/ppxlib": ">=0.18.0",
+        "@opam/yojson": "^1.7.0",
+        "gillian": "GillianPlatform/Gillian:gillian.json#5ab38ac27e4ec2f26691b7fac3f8e9a7852a4964",
+        "ocaml": "^5.1.x"
+    },
+    "devDependencies": {
+        "ocaml": "5.1.x",
+        "@opam/ocaml-lsp-server": "*",
+        "@opam/odoc": "*",
+        "@opam/ocamlformat": "*",
+        "@opam/utop": "*"
     }
-  },
-  "scripts": {
-    "watch": "dune build @install --watch",
-    "format-check": "dune build @fmt",
-    "format": "dune build @fmt --auto-promote",
-    "test": "dune test -j 4",
-    "clean": "dune clean"
-  },
-  "dependencies": {
-    "@opam/cmdliner": "^1.0.4",
-    "@opam/dune": "^3.6.1",
-    "@opam/fmt": "^0.8.8",
-    "@opam/ppx_deriving_yojson": "*",
-    "@opam/ppxlib": ">=0.18.0",
-    "@opam/yojson": "^1.7.0",
-    "gillian": "GillianPlatform/Gillian:gillian.json#5ab38ac27e4ec2f26691b7fac3f8e9a7852a4964",
-    "ocaml": "^5.1.x"
-  },
-  "devDependencies": {
-    "ocaml": "5.1.x",
-    "@opam/ocaml-lsp-server": "*",
-    "@opam/odoc": "*",
-    "@opam/ocamlformat": "*",
-    "@opam/utop": "*"
-  },
-  "resolutions": {
-    "@opam/conf-sqlite3": "ManasJayanth/esy-sqlite:esy.json#28dfc73a8eda790213a8359ad708231069ed7079"
-  }
 }
