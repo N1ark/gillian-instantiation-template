@@ -8,6 +8,8 @@ proc symb_int() {
 proc main() {
   x := "symb_int"();
   y := "symb_int"();
+  z := [load](0);
+  z := [store](x);
   assume(0i i<# x);
   assume(0i i<# y);
   assert(0i i<# (x i+ y));
