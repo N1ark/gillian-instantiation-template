@@ -10,21 +10,55 @@ type vt = Values.t
 type st = Subst.t
 
 type c_fix_t = unit
-type err_t = unit [@@deriving show]
+type err_t =
+  | MissingState
+  | DoubleAlloc
+  [@@deriving show]
 
-type t = unit
+type t =
+  | None
+  | Val of Values.t
 
 type action_ret = (t * vt list, err_t) result
 
-let init () = ()
 
-let get_init_data () = ()
-let clear () = ()
+let pp_v v = Yojson.Safe.to_string (Values.to_yojson v)
+let pp_t v = match v with
+  | None -> "None"
+  | Val v -> pp_v v
+
+
+let init (i:init_data) : t = None
+let get_init_data (i:t) : init_data = ()
+
+let clear (v:t) : t =
+  failwith "Implement here (clear)"
+
+let execute_alloc v args = match v, args with
+  | None, [v] -> Ok (Val v, [])
+  | Val _, _ -> Error DoubleAlloc
+  | _, _ -> failwith "Invalid alloc call"
+
+let execute_load v args = match v, args with
+  | None, _ -> Error MissingState
+  | Val v, [] -> Ok (Val v, [v])
+  | _, _ -> failwith "Invalid load call"
+
+let execute_store v args = match v, args with
+  | None, _ -> Error MissingState
+  | Val v, [v'] -> Ok (Val v', [])
+  | _, _ -> failwith "Invalid store call"
 
 (* val execute_action : action_name:string -> t -> vt list -> action_ret Delayed.t*)
-let execute_action ~(action_name:string) (a:t) (args:vt list) : action_ret Delayed.t =
-  failwith (Printf.sprintf "Implement here (execute_action %s)" action_name)
-
+let execute_action ~(action_name:string) (v:t) (args:vt list) : action_ret Delayed.t =
+  let res = match action_name with
+    | "load" -> execute_load v args
+    | "store" -> execute_store v args
+    | "alloc" -> execute_alloc v args
+    | _ -> failwith (Printf.sprintf "Unrecognized action: %s" action_name)
+  in match res with
+    | Ok (v', args') -> Delayed.return (Ok (v', args'))
+    | Error e -> Delayed.return (Error e)
 
   (* val consume : core_pred:string -> t -> vt list -> action_ret Delayed.t *)
 let consume ~(core_pred:string) (a:t) (args:vt list) : action_ret Delayed.t =
@@ -34,15 +68,16 @@ let consume ~(core_pred:string) (a:t) (args:vt list) : action_ret Delayed.t =
 let produce ~(core_pred:string) (a:t) (args:vt list) : t Delayed.t =
   failwith (Printf.sprintf "Implement here (produce %s)" core_pred)
 
-
-
 let is_overlapping_asrt _ = failwith "Implement here (is_overlapping_asrt)"
 
-let copy () = ()
+let copy (v:t) : t = failwith "Implement here (copy)"
 
 let pp _ _ = ()
 
-let substitution_in_place _ _ = failwith "Implement here (substitution_in_place)"
+(* val substitution_in_place : st -> t -> t Delayed.t *)
+let substitution_in_place (subst: st) (heap: t): t Monadic.Delayed.t =
+  Monadic.Delayed.return heap
+
 let fresh_let _ = failwith "Implement here (fresh_let)"
 
 (* val clean_up : ?keep:Expr.Set.t -> t -> Expr.Set.t * Expr.Set.t *)
