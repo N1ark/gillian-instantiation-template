@@ -78,8 +78,6 @@ let pp _ _ = ()
 let substitution_in_place (subst: st) (heap: t): t Monadic.Delayed.t =
   Monadic.Delayed.return heap
 
-let fresh_let _ = failwith "Implement here (fresh_let)"
-
 (* val clean_up : ?keep:Expr.Set.t -> t -> Expr.Set.t * Expr.Set.t *)
 let clean_up ?(keep=Expr.Set.empty) _ = failwith "Implement here (clean_up)"
 
