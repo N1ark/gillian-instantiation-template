@@ -14,9 +14,11 @@ module Sum
   type st = Subst.t
 
   type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
-  type err_t = | E1 of S1.err_t | E2 of S2.err_t [@@deriving show]
+  type err_t = | E1 of S1.err_t | E2 of S2.err_t
+  [@@deriving show, yojson]
 
   type t = | S1 of S1.t | S2 of S2.t
+  [@@deriving show, yojson]
 
   type action_ret = (t * vt list, err_t) result
 
@@ -113,9 +115,6 @@ module Sum
   let get_failing_constraint = split_err S1.get_failing_constraint S2.get_failing_constraint
 
   let get_fixes s pfs tenv e =
-    let open Containers in
-    let open S1 in
-    let open S2 in
     match s, e with
     | S1 s1, E1 e1 ->
       let fixes = S1.get_fixes s1 pfs tenv e1 in
@@ -147,12 +146,6 @@ module Sum
     | S1 s1, E1 e1 -> S1.split_further s1 core_pred args e1
     | S2 s2, E2 e2 -> S2.split_further s2 core_pred args e2
     | _ -> failwith "split_further: mismatched arguments"
-
-  (* TODO: deriving yojson -- I think -- should make the following not necessary to implement... *)
-  let err_t_to_yojson = split_err S1.err_t_to_yojson S2.err_t_to_yojson
-  let err_t_of_yojson s = failwith "Sum.err_t_of_yojson not implemented"
-  let to_yojson = split_state S1.to_yojson S2.to_yojson
-  let of_yojson _ = failwith "Sum.of_yojson not implemented"
 
   module Lift = struct
 

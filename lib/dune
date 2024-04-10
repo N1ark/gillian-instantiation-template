@@ -1,5 +1,5 @@
 (library
  (name instantiation)
- (libraries gillian)
+ (libraries gillian ppx_deriving_yojson.runtime)
  (preprocess
-  (pps ppx_deriving.show)))
+  (pps ppx_deriving.show ppx_deriving_yojson)))

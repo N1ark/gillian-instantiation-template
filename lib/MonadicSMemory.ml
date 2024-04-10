@@ -10,9 +10,9 @@ type vt = Values.t
 type st = Subst.t
 
 type c_fix_t = unit
-type err_t = unit [@@deriving show]
+type err_t = unit [@@deriving show, yojson]
 
-type t = unit
+type t = unit [@@deriving show, yojson]
 
 type action_ret = (t * vt list, err_t) result
 
@@ -67,12 +67,6 @@ let get_print_info _ _ = failwith "Implement here (get_print_info)"
 let sure_is_nonempty _ = failwith "Implement here (sure_is_nonempty)"
 
 let split_further _ _ _ _ = failwith "Implement here (split_further)"
-
-(* TODO: deriving yojson -- I think -- should make the following not necessary to implement... *)
-let err_t_to_yojson _ = failwith "Implement here (err_t_to_yojson)"
-let err_t_of_yojson _ = failwith "Implement here (err_t_of_yojson)"
-let to_yojson _ = failwith "Implement here (to_yojson)"
-let of_yojson _ = failwith "Implement here (of_yojson)"
 
 module Lift = struct
 
