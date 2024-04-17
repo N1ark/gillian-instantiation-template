@@ -2,6 +2,7 @@ open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
+module DR = Delayed_result
 
 type init_data = unit
 
@@ -9,7 +10,8 @@ type vt = Values.t
 
 type st = Subst.t
 
-type c_fix_t = unit
+type c_fix_t =
+  | FAddState of vt
 type err_t =
   | MissingState
   | DoubleAlloc
@@ -95,24 +97,44 @@ let substitution_in_place subst (heap:t) =
 (* val clean_up : ?keep:Expr.Set.t -> t -> Expr.Set.t * Expr.Set.t *)
 let clean_up ?(keep=Expr.Set.empty) _ = failwith "Implement here (clean_up)"
 
-let lvars _ = failwith "Implement here (lvars)"
-let alocs _ = failwith "Implement here (alocs)"
+let lvars s = match s with
+  | None -> Containers.SS.empty
+  | Val v -> Expr.lvars v
+let alocs s = Containers.SS.empty
 
 (* val assertions : ?to_keep:Containers.SS.t -> t -> Asrt.t list *)
 let assertions ?(to_keep=Containers.SS.empty) _ = failwith "Implement here (assertions)"
-let mem_constraints _ = failwith "Implement here (mem_constraints)"
-let pp_c_fix _ _ = failwith "Implement here (pp_c_fix)"
+let mem_constraints s = []
+let pp_c_fix fmt _ = Format.fprintf fmt "fix"
 let get_recovery_tactic _ _ = failwith "Implement here (get_recovery_tactic)"
-let pp_err _ _ = failwith "Implement here (pp_err)"
-let get_failing_constraint _ = failwith "Implement here (get_failing_constraint)"
+let pp_err fmt e = Format.fprintf fmt "%s" (show_err_t e)
+let get_failing_constraint e = failwith "Implement here (get_failing_constraint)"
 
-let get_fixes _ _ _ _ = failwith "Implement here (get_fixes)"
+(* (c_fix_t list * Formula.t list * (string * Type.t) list * Containers.SS.t)
+list
+*)
 
-let can_fix _ = failwith "Implement here (can_fix)"
-let apply_fix _ _ = failwith "Implement here (apply_fix)"
-let pp_by_need _ _ _ = failwith "Implement here (pp_by_need)"
-let get_print_info _ _ = failwith "Implement here (get_print_info)"
-let sure_is_nonempty _ = failwith "Implement here (sure_is_nonempty)"
+let fresh_name =
+  let counter = ref 0 in
+  fun () ->
+    let n = !counter in
+    counter := !counter + 1;
+    Printf.sprintf "fresh_%d" n
+
+let get_fixes s pfs tenv = function
+| MissingState -> [
+  ([FAddState (LVar (fresh_name ()))], [], [], Containers.SS.empty)
+]
+| _ -> []
+
+let can_fix = function
+| MissingState -> true
+| _ -> false
+let apply_fix s = function
+| FAddState v -> DR.ok (Val v)
+let pp_by_need _ = pp
+let get_print_info _ _ = (Containers.SS.empty, Containers.SS.empty)
+let sure_is_nonempty _ = false
 
 let split_further _ _ _ _ = failwith "Implement here (split_further)"
 
