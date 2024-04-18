@@ -1,0 +1,49 @@
+spec test_store(x)
+  [[ (x == #x) * <points_to>(;#any) ]]
+  [[ (ret == null) * <points_to>(;#x) ]]
+  normal
+proc test_store(x) {
+  e := [store](x);
+  ret := null;
+  return
+};
+
+spec test_invalid_store(x)
+  [[ (x == #x) ]]
+  [[ (ret == null) ]]
+  normal
+proc test_invalid_store(x) {
+  e := [store](x);
+  ret := null;
+  return
+};
+
+spec test_load(x)
+  [[ (<points_to>(;#any)) ]]
+  [[ (ret == {{ #any }}) * <points_to>(;#any) ]]
+  normal
+proc test_load(x) {
+  x := [load]();
+  ret := x;
+  return
+};
+
+spec test_load_drop(x)
+  [[ (<points_to>(;#any)) ]]
+  [[ (ret == {{ #any }}) ]]
+  normal
+proc test_load_drop(x) {
+  x := [load]();
+  ret := x;
+  return
+};
+
+spec test_invalid_load(x)
+  [[ (<points_to>(;#any)) ]]
+  [[ (ret == {{ #any }}) * (<points_to>(;#any)) * (<points_to>(;#any)) ]]
+  normal
+proc test_invalid_load(x) {
+  x := [load]();
+  ret := x;
+  return
+};

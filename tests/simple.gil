@@ -1,9 +1,0 @@
-proc main() {
-  x := fresh_svar();
-  u := [alloc](3.0);
-  a := [load]();
-  u := [store](x);
-  z := [load]();
-  ret := null;
-  return
-};
