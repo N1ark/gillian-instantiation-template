@@ -1,6 +1,8 @@
 open Gillian
 open Instantiation
-module SMemory = Gillian.Monadic.MonadicSMemory.Lift (Excl)
+
+module PatchedMem = MyMonadicSMemory.Make (Excl)
+module SMemory = Gillian.Monadic.MonadicSMemory.Lift (PatchedMem)
 
 module Lifter (Verifier : Gillian.Abstraction.Verifier.S with type annot = Gil_syntax.Annot.Basic.t) =
   Gillian.Debugger.Lifter.Gil_lifter.Make (SMemory) (ParserAndCompiler.Dummy) (Verifier)

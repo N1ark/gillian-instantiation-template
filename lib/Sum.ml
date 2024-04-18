@@ -3,24 +3,33 @@ open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
 
+open Utils
+
 module Sum
-  (S1: Gillian.Monadic.MonadicSMemory.S)
-  (S2: Gillian.Monadic.MonadicSMemory.S) : MonadicSMemory.S = struct
-
-  type init_data = | I1 of S1.init_data | I2 of S2.init_data
-
-  type vt = Expr.t
-
-  type st = Subst.t
+  (S1: MyMonadicSMemory.S)
+  (S2: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
+  [@@deriving show]
   type err_t = | E1 of S1.err_t | E2 of S2.err_t
   [@@deriving show, yojson]
 
   type t = | S1 of S1.t | S2 of S2.t
   [@@deriving show, yojson]
 
-  type action_ret = (t * vt list, err_t) result
+  type action = | A1 of S1.action | A2 of S2.action
+  let action_from_str s = Option.bind (split_str s) (function
+    | "1", s -> Option.map (fun a -> A1 a) (S1.action_from_str s)
+    | "2", s -> Option.map (fun a -> A2 a) (S2.action_from_str s)
+    | _ -> None)
+
+  type pred = | P1 of S1.pred | P2 of S2.pred
+  let pred_from_str s = Option.bind (split_str s) (function
+    | "1", s -> Option.map (fun p -> P1 p) (S1.pred_from_str s)
+    | "2", s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
+    | _ -> None)
+
+
 
   let split_state f1 f2 s =
     match s with
@@ -32,60 +41,49 @@ module Sum
     | E1 e1 -> f1 e1
     | E2 e2 -> f2 e2
 
-  let init i = match i with
-    | I1 i -> S1 (S1.init i)
-    | I2 i -> S2 (S2.init i)
-
-  let get_init_data (s:t): init_data = match s with
-    | S1 s1 -> I1 (S1.get_init_data s1)
-    | S2 s2 -> I2 (S2.get_init_data s2)
+  let init () = S1 (S1.init ())
 
   let clear s = match s with
     | S1 s1 -> S1 (S1.clear s1)
     | S2 s2 -> S2 (S2.clear s2)
 
-  (* val execute_action : action_name:string -> t -> vt list -> action_ret Delayed.t*)
-  let execute_action ~action_name a args =
+  let execute_action action s args =
     let open Delayed.Syntax in
-    match a with
-    | S1 a1 ->
-      let+ res = S1.execute_action ~action_name a1 args in (match res with
-      | Ok (a1', args') -> Ok (S1 a1', args')
+    match action, s with
+    | A1 action, S1 s1 ->
+      let+ res = S1.execute_action action s1 args in (match res with
+      | Ok (s1', args') -> Ok (S1 s1', args')
       | Error e -> Error (E1 e))
-    | S2 a2 ->
-      let+ res = S2.execute_action ~action_name a2 args in (match res with
-      | Ok (a2', args') -> Ok (S2 a2', args')
+    | A2 action, S2 s2 ->
+      let+ res = S2.execute_action action s2 args in (match res with
+      | Ok (s2', args') -> Ok (S2 s2', args')
       | Error e -> Error (E2 e))
+    | _ -> failwith "Sum.execute_action: mismatched arguments"
 
 
-    (* val consume : core_pred:string -> t -> vt list -> action_ret Delayed.t *)
-  let consume ~(core_pred:string) (a:t) (args:vt list) : action_ret Delayed.t =
+  let consume pred s args =
     let open Delayed.Syntax in
-    match a with
-    | S1 a1 ->
-      let+ res = S1.consume ~core_pred a1 args in (match res with
-      | Ok (a1', args') -> Ok (S1 a1', args')
+    match pred, s with
+    | P1 pred, S1 s1 ->
+      let+ res = S1.consume pred s1 args in (match res with
+      | Ok (s1', args') -> Ok (S1 s1', args')
       | Error e -> Error (E1 e))
-    | S2 a2 ->
-      let+ res = S2.consume ~core_pred a2 args in (match res with
-      | Ok (a2', args') -> Ok (S2 a2', args')
+    | P2 pred, S2 s2 ->
+      let+ res = S2.consume pred s2 args in (match res with
+      | Ok (s2', args') -> Ok (S2 s2', args')
       | Error e -> Error (E2 e))
+    | _ -> failwith "Sum.consume: mismatched arguments"
 
-    (* val produce : core_pred:string -> t -> vt list -> t Delayed.t*)
-  let produce ~(core_pred:string) (a:t) (args:vt list) : t Delayed.t =
+  let produce pred s args =
     let open Delayed.Syntax in
-    match a with
-    | S1 a1 ->
-      let+ a1' = S1.produce ~core_pred a1 args in S1 a1'
-    | S2 a2 ->
-      let+ a2' = S2.produce ~core_pred a2 args in S2 a2'
+    match pred, s with
+    | P1 pred, S1 s1 ->
+      let+ s1' = S1.produce pred s1 args in S1 s1'
+    | P2 pred, S2 s2 ->
+      let+ s2' = S2.produce pred s2 args in S2 s2'
+    | _ -> failwith "Sum.produce: mismatched arguments"
 
-
-  let is_overlapping_asrt s = S1.is_overlapping_asrt s || S2.is_overlapping_asrt s
-
-  let copy s = match s with
-    | S1 s1 -> S1 (S1.copy s1)
-    | S2 s2 -> S2 (S2.copy s2)
+  let compose s1 s2 = failwith "Sum.compose not implemented"
 
   let pp fmt s = split_state (S1.pp fmt) (S2.pp fmt) s
 
@@ -95,24 +93,15 @@ module Sum
     | S1 t1 -> let+ t1' = S1.substitution_in_place st t1 in S1 t1'
     | S2 t2 -> let+ t2' = S2.substitution_in_place st t2 in S2 t2'
 
-  (* val clean_up : ?keep:Expr.Set.t -> t -> Expr.Set.t * Expr.Set.t *)
-  let clean_up ?(keep=Expr.Set.empty) = split_state (S1.clean_up ~keep) (S2.clean_up ~keep)
-
   let lvars = split_state S1.lvars S2.lvars
   let alocs = split_state S1.alocs S2.alocs
 
-  (* val assertions : ?to_keep:Containers.SS.t -> t -> Asrt.t list *)
-  let assertions ?(to_keep=Containers.SS.empty) = split_state (S1.assertions ~to_keep) (S2.assertions ~to_keep)
-  let mem_constraints = split_state S1.mem_constraints S2.mem_constraints
-  let pp_c_fix fmt f = match f with
-    | F1 f1 -> S1.pp_c_fix fmt f1
-    | F2 f2 -> S2.pp_c_fix fmt f2
+  let assertions  = split_state (S1.assertions) (S2.assertions)
+
   let get_recovery_tactic s e = match s, e with
     | S1 s1, E1 e1 -> S1.get_recovery_tactic s1 e1
     | S2 s2, E2 e2 -> S2.get_recovery_tactic s2 e2
     | _ -> failwith "get_recovery_tactic: mismatched arguments"
-  let pp_err fmt = split_err (S1.pp_err fmt) (S2.pp_err fmt)
-  let get_failing_constraint = split_err S1.get_failing_constraint S2.get_failing_constraint
 
   let get_fixes s pfs tenv e =
     match s, e with
@@ -137,32 +126,4 @@ module Sum
       | Ok s2' -> Ok (S2 s2')
       | Error e -> Error (E2 e))
     | _ -> failwith "apply_fix: mismatched arguments"
-
-  let pp_by_need c fmt = split_state (S1.pp_by_need c fmt) (S2.pp_by_need c fmt)
-  let get_print_info c = split_state (S1.get_print_info c) (S2.get_print_info c)
-  let sure_is_nonempty = split_state S1.sure_is_nonempty S2.sure_is_nonempty
-
-  let split_further s core_pred args e = match s, e with
-    | S1 s1, E1 e1 -> S1.split_further s1 core_pred args e1
-    | S2 s2, E2 e2 -> S2.split_further s2 core_pred args e2
-    | _ -> failwith "split_further: mismatched arguments"
-
-  module Lift = struct
-
-    open Gillian.Debugger.Utils
-
-    (* Refer to MonadicSMemory.mli *)
-
-    let add_variables
-      ~(store:(string * vt) list)
-      ~(memory:t)
-      ~(is_gil_file:'a)
-      ~(get_new_scope_id:(unit -> int))
-      (scopes:(int, Variable.t list) Hashtbl.t)
-      : Variable.scope list =
-      failwith "Sum.Lift.add_variables not implemented"
-
-  end
-
-
 end
