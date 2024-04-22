@@ -33,10 +33,6 @@ let pred_from_str = function
 let pred_to_str = function
   | PointsTo -> "points_to"
 
-
-type action_ret = (t * Values.t list, err_t) result
-
-
 let core_pred ?(ins=[]) ?(outs=[]) p = Asrt.GA (pred_to_str p, ins, outs)
 
 let init () = None

@@ -1,7 +1,7 @@
-open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
+module Containers = Gillian.Utils.Containers
 
 open Utils
 
@@ -9,13 +9,8 @@ module Product
   (S1: MyMonadicSMemory.S)
   (S2: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
-  type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
-  [@@deriving show]
-  type err_t = | E1 of S1.err_t | E2 of S2.err_t
-  [@@deriving show, yojson]
   type t = S1.t * S2.t
   [@@deriving show, yojson]
-
 
   type action = | A1 of S1.action | A2 of S2.action
   let action_from_str s = Option.bind (split_str s) (function
@@ -29,11 +24,15 @@ module Product
     | "2", s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
     | _ -> None)
 
+  type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
+  [@@deriving show]
+  type err_t = | E1 of S1.err_t | E2 of S2.err_t
+  [@@deriving show, yojson]
+
   let init (): t = (S1.init (), S2.init ())
 
   let clear (s1, s2) = (S1.clear s1, S2.clear s2)
 
-  (* val execute_action : action_name:string -> t -> vt list -> action_ret Delayed.t*)
   let execute_action action (s1, s2) args =
     let open Delayed.Syntax in
     match action with
@@ -48,7 +47,6 @@ module Product
           | Ok (s2', v) -> Ok ((s1, s2'), v)
           | Error e -> Error (E2 e))
 
-  (* val consume : core_pred:string -> t -> vt list -> action_ret Delayed.t *)
   let consume pred (s1,s2) args =
     let open Delayed.Syntax in
     match pred with
@@ -63,7 +61,6 @@ module Product
           | Ok (s2', v) -> Ok ((s1, s2'), v)
           | Error e -> Error (E2 e))
 
-  (* val produce : core_pred:string -> t -> vt list -> t Delayed.t*)
   let produce pred (s1, s2) args =
     let open Delayed.Syntax in
     match pred with
@@ -84,7 +81,6 @@ module Product
   let lvars (s1, s2) = Containers.SS.union (S1.lvars s1) (S2.lvars s2)
   let alocs (s1, s2) = Containers.SS.union (S1.alocs s1) (S2.alocs s2)
 
-  (* val assertions : ?to_keep:Containers.SS.t -> t -> Asrt.t list *)
   let assertions (s1, s2): Asrt.t list =
     (* Override predicates by appending 1/2, so we can then pass the predicates to the right
        part of state when consuming/producing *)

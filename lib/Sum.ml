@@ -9,11 +9,6 @@ module Sum
   (S1: MyMonadicSMemory.S)
   (S2: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
-  type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
-  [@@deriving show]
-  type err_t = | E1 of S1.err_t | E2 of S2.err_t
-  [@@deriving show, yojson]
-
   type t = | S1 of S1.t | S2 of S2.t
   [@@deriving show, yojson]
 
@@ -29,7 +24,10 @@ module Sum
     | "2", s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
     | _ -> None)
 
-
+  type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
+  [@@deriving show]
+  type err_t = | E1 of S1.err_t | E2 of S2.err_t
+  [@@deriving show, yojson]
 
   let split_state f1 f2 s =
     match s with
@@ -85,8 +83,6 @@ module Sum
 
   let compose s1 s2 = failwith "Sum.compose not implemented"
 
-  let pp fmt s = split_state (S1.pp fmt) (S2.pp fmt) s
-
   let substitution_in_place st t =
     let open Delayed.Syntax in
     match t with
@@ -95,8 +91,7 @@ module Sum
 
   let lvars = split_state S1.lvars S2.lvars
   let alocs = split_state S1.alocs S2.alocs
-
-  let assertions  = split_state (S1.assertions) (S2.assertions)
+  let assertions  = split_state S1.assertions S2.assertions
 
   let get_recovery_tactic s e = match s, e with
     | S1 s1, E1 e1 -> S1.get_recovery_tactic s1 e1

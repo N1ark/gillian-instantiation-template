@@ -1,8 +1,8 @@
-open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
 
+module Containers = Gillian.Utils.Containers
 module DR = Delayed_result
 module Recovery_tactic = Gillian.General.Recovery_tactic
 module PFS = Engine.PFS
