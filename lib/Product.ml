@@ -6,23 +6,29 @@ module Containers = Gillian.Utils.Containers
 open Utils
 
 module Product
+  (IDs : IDs)
   (S1: MyMonadicSMemory.S)
   (S2: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   type t = S1.t * S2.t
   [@@deriving show, yojson]
 
+  module IDer = Identifier(IDs)
+
   type action = | A1 of S1.action | A2 of S2.action
-  let action_from_str s = Option.bind (split_str s) (function
-    | "1", s -> Option.map (fun a -> A1 a) (S1.action_from_str s)
-    | "2", s -> Option.map (fun a -> A2 a) (S2.action_from_str s)
-    | _ -> None)
+  let action_from_str s = match IDer.get_ided s with
+    | ID1 s -> Option.map (fun a -> A1 a) (S1.action_from_str s)
+    | ID2 s -> Option.map (fun a -> A2 a) (S2.action_from_str s)
+    | NotIDed _ -> None
 
   type pred = | P1 of S1.pred | P2 of S2.pred
-  let pred_from_str s = Option.bind (split_str s) (function
-    | "1", s -> Option.map (fun p -> P1 p) (S1.pred_from_str s)
-    | "2", s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
-    | _ -> None)
+  let pred_from_str s = match IDer.get_ided s with
+    | ID1 s -> Option.map (fun p -> P1 p) (S1.pred_from_str s)
+    | ID2 s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
+    | NotIDed _ -> None
+  let pred_to_str = function
+    | P1 p -> IDs.id1 ^ S1.pred_to_str p
+    | P2 p -> IDs.id2 ^ S2.pred_to_str p
 
   type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
   [@@deriving show]
@@ -30,8 +36,8 @@ module Product
   [@@deriving show, yojson]
 
   let init (): t = (S1.init (), S2.init ())
-
   let clear (s1, s2) = (S1.clear s1, S2.clear s2)
+  let construct _ = failwith "Implement here (construct)"
 
   let execute_action action (s1, s2) args =
     let open Delayed.Syntax in
@@ -81,13 +87,13 @@ module Product
   let lvars (s1, s2) = Containers.SS.union (S1.lvars s1) (S2.lvars s2)
   let alocs (s1, s2) = Containers.SS.union (S1.alocs s1) (S2.alocs s2)
 
-  let assertions (s1, s2): Asrt.t list =
+  let assertions (s1, s2) =
     (* Override predicates by appending 1/2, so we can then pass the predicates to the right
        part of state when consuming/producing *)
     let a1 = S1.assertions s1 in
-    let a1 = List.map (override_preds "1") a1 in
+    let a1 = List.map (fun (p, i, o) -> (P1 p, i, o)) a1 in
     let a2 = S2.assertions s2 in
-    let a2 = List.map (override_preds "2") a2 in
+    let a2 = List.map (fun (p, i, o) -> (P2 p, i, o)) a2 in
     a1 @ a2
 
   let get_recovery_tactic (s1, s2) e = match e with

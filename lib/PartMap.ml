@@ -15,6 +15,8 @@ module PartMap
   (I: PartMapIndex)
   (S: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
+  (* TODO: This is all wrong, states in the map are not accessed like this
+     (see MList for something more accurate) *)
 
   module SMap = Prelude.Map.Make (I)
 
@@ -39,6 +41,7 @@ module PartMap
   let action_from_str = S.action_from_str
   type pred = S.pred
   let pred_from_str = S.pred_from_str
+  let pred_to_str = S.pred_to_str
 
   let map_entries s f =
     SMap.to_list s
@@ -47,6 +50,7 @@ module PartMap
   let init (): t = SMap.empty
 
   let clear s = s
+  let construct _ = failwith "Implement here (construct)"
 
   let execute_action action a args =
     let open Delayed.Syntax in
@@ -110,7 +114,6 @@ module PartMap
     let open Containers.SS in
     SMap.fold (fun _ s acc -> union acc (S.alocs s)) s empty
 
-  (* val assertions : ?to_keep:Containers.SS.t -> t -> Asrt.t list *)
   let assertions s = map_entries s S.assertions |> List.flatten
   let get_recovery_tactic (s:t) (e:err_t) = match e with
     | InnerError (idx, e) -> S.get_recovery_tactic (SMap.find idx s) e

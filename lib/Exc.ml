@@ -33,10 +33,11 @@ let pred_from_str = function
 let pred_to_str = function
   | PointsTo -> "points_to"
 
-let core_pred ?(ins=[]) ?(outs=[]) p = Asrt.GA (pred_to_str p, ins, outs)
-
 let init () = None
 let clear (v:t) : t = None
+let construct = function
+  | [v] -> Val v
+  | _ -> failwith "Invalid Excl construction"
 
 let execute_action action s args =
   match action, s, args with
@@ -78,9 +79,9 @@ let lvars s = match s with
   | Val v -> Expr.lvars v
 let alocs s = Containers.SS.empty
 
-let assertions s: Asrt.t list = match s with
+let assertions = function
   | None -> []
-  | Val v -> [core_pred PointsTo ~outs:[v]]
+  | Val v -> [(PointsTo, [], [v])]
 
 let get_recovery_tactic (s:t) (e:err_t): Values.t Recovery_tactic.t = match e with
   (* | MissingState -> Recovery_tactic.try_unfold ??? *)

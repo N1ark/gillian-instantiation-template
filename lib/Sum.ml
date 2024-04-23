@@ -6,23 +6,29 @@ open Gil_syntax
 open Utils
 
 module Sum
+  (IDs: IDs)
   (S1: MyMonadicSMemory.S)
   (S2: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   type t = | S1 of S1.t | S2 of S2.t
   [@@deriving show, yojson]
 
+  module IDer = Identifier(IDs)
+
   type action = | A1 of S1.action | A2 of S2.action
-  let action_from_str s = Option.bind (split_str s) (function
-    | "1", s -> Option.map (fun a -> A1 a) (S1.action_from_str s)
-    | "2", s -> Option.map (fun a -> A2 a) (S2.action_from_str s)
-    | _ -> None)
+  let action_from_str s = match IDer.get_ided s with
+    | ID1 s -> Option.map (fun a -> A1 a) (S1.action_from_str s)
+    | ID2 s -> Option.map (fun a -> A2 a) (S2.action_from_str s)
+    | NotIDed _ -> None
 
   type pred = | P1 of S1.pred | P2 of S2.pred
-  let pred_from_str s = Option.bind (split_str s) (function
-    | "1", s -> Option.map (fun p -> P1 p) (S1.pred_from_str s)
-    | "2", s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
-    | _ -> None)
+  let pred_from_str s =  match IDer.get_ided s with
+    | ID1 s -> Option.map (fun p -> P1 p) (S1.pred_from_str s)
+    | ID2 s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
+    | NotIDed _ -> None
+  let pred_to_str = function
+    | P1 p -> IDs.id1 ^ S1.pred_to_str p
+    | P2 p -> IDs.id2 ^ S2.pred_to_str p
 
   type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
   [@@deriving show]
@@ -40,10 +46,10 @@ module Sum
     | E2 e2 -> f2 e2
 
   let init () = S1 (S1.init ())
-
   let clear s = match s with
     | S1 s1 -> S1 (S1.clear s1)
     | S2 s2 -> S2 (S2.clear s2)
+  let construct _ = failwith "Implement here (construct)"
 
   let execute_action action s args =
     let open Delayed.Syntax in
@@ -91,7 +97,9 @@ module Sum
 
   let lvars = split_state S1.lvars S2.lvars
   let alocs = split_state S1.alocs S2.alocs
-  let assertions  = split_state S1.assertions S2.assertions
+  let assertions = function
+    | S1 s1 -> List.map (fun (p, i, o) -> (P1 p, i, o)) (S1.assertions s1)
+    | S2 s2 -> List.map (fun (p, i, o) -> (P2 p, i, o)) (S2.assertions s2)
 
   let get_recovery_tactic s e = match s, e with
     | S1 s1, E1 e1 -> S1.get_recovery_tactic s1 e1

@@ -21,10 +21,12 @@ module type S = sig
 
   val action_from_str : string -> action option
   val pred_from_str : string -> pred option
+  val pred_to_str : pred -> string
 
   (** Initialisation *)
   val init : unit -> t
   val clear : t -> t
+  val construct : Values.t list -> t
 
   (** Execute action *)
   val execute_action : action -> t -> Values.t list -> (t * Values.t list, err_t) result Delayed.t
@@ -36,11 +38,13 @@ module type S = sig
   (** Composition *)
   val compose : t -> t -> t
 
+  (* Core predicates: pred * ins * outs, converted to Asrt.GA *)
+  val assertions : t -> (pred * Expr.t list * Expr.t list) list
+
   (** Helpers *)
   val lvars : t -> Containers.SS.t
   val alocs : t -> Containers.SS.t
   val substitution_in_place : Subst.t -> t -> t Delayed.t
-  val assertions : t -> Asrt.t list
   val get_recovery_tactic : t -> err_t -> Values.t Recovery_tactic.t
 
   (** Fixes *)
@@ -85,8 +89,11 @@ module Make (Mem: S): MonadicSMemory.S with type init_data = unit = struct
     | Some pred -> produce pred state args
     | None -> failwith ("Predicate not found: " ^ core_pred)
 
+  let assertions ?to_keep s =
+    let asrts = assertions s in
+    List.map (fun (p, ins, outs) -> Asrt.GA (pred_to_str p, ins, outs)) asrts
+
   (* Override methods to keep implementations light *)
-  let assertions ?to_keep = assertions
   let is_overlapping_asrt _ = false
   let copy state = state (* assumes state is immutable *)
   let pp fmt s = Format.pp_print_string fmt (show s)
