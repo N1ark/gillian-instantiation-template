@@ -39,6 +39,7 @@ module MList
     type err_t =
     | OutOfBounds of Expr.t * Expr.t (* Accessed index, list length *)
     | MissingCell of Expr.t (* Accessed index *)
+    | MissingLength
     | SubError of Expr.t * S.err_t
     [@@deriving show, yojson]
 
@@ -47,15 +48,16 @@ module MList
     let action_from_str str = Option.map (fun a -> SubAction a) (S.action_from_str str)
 
     type pred =
-    | Length of Expr.t
+    | Length
     | SubPred of S.pred
-    let pred_from_str str =
-      Option.map (fun p -> SubPred p) (S.pred_from_str str)
+    let pred_from_str = function
+    | "length" -> Some Length
+    | str -> Option.map (fun p -> SubPred p) (S.pred_from_str str)
     let pred_to_str = function
-      | Length _ -> "length"
+      | Length -> "length"
       | SubPred p -> S.pred_to_str p
 
-    let init (): t = (EMap.empty, Some (Expr.int 4))
+    let init (): t = (EMap.empty, None)
     let clear s = s (* TODO *)
     let construct = function
     | [l] -> (EMap.empty, Some l)
@@ -98,7 +100,7 @@ module MList
         | Ok (s', v) -> Ok ((EMap.add idx s' b, n), v)
         | Error e -> Error (SubError (idx, e))
         )
-      | _ -> failwith "Invalid arguments for action"
+      | SubAction _, [] -> failwith "Missing index for sub-action"
 
     let consume pred (b, n) args =
       let open DR.Syntax in
@@ -110,8 +112,14 @@ module MList
         | Ok (s', ins) -> Ok ((EMap.add idx s' b, n), idx :: ins)
         | Error e -> Error (SubError (idx, e))
         )
-      (* | Length *)
-      | _ -> failwith "Invalid arguments for consume"
+      | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
+      | Length, [] -> (
+        match n with
+        | Some n -> DR.ok ((b, None), [n])
+        | None -> DR.error MissingLength
+      )
+      | Length, _ -> failwith "Invalid arguments for length consume"
+
 
 
     let produce pred (b, n) args =
@@ -124,7 +132,14 @@ module MList
           let+ s' = S.produce p s args in
           (EMap.add idx s' b, n)
         | Error e -> failwith "Invalid indexing for produce")
-      | _ -> failwith "Invalid arguments for produce"
+      | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
+      | Length, [n'] -> (
+        match n with
+        | Some _ ->
+          Logging.normal (fun m -> m "Warning MList: vanishing due to duplicate length";);
+          Delayed.vanish ()
+        | None -> Delayed.return (b, Some n'))
+      | Length, _ -> failwith "Invalid arguments for length produce"
 
     let compose s1 s2 = failwith "Not implemented"
 
@@ -180,6 +195,8 @@ module MList
     | SubError (idx, e) -> S.can_fix e
     | MissingCell _ -> true
     | OutOfBounds _ -> false
+    | MissingLength -> true
+
 
     let apply_fix (b, n) f = match f with
     | SubFix (idx, f) ->
