@@ -11,7 +11,7 @@ module type PartMapIndex = sig
   val substitute: Subst.t -> t -> t
 end
 
-module PartMap
+module Make
   (I: PartMapIndex)
   (S: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 

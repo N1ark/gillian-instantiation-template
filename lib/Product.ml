@@ -5,7 +5,7 @@ module Containers = Gillian.Utils.Containers
 
 open Utils
 
-module Product
+module Make
   (IDs : IDs)
   (S1: MyMonadicSMemory.S)
   (S2: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct

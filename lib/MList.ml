@@ -17,7 +17,7 @@ let expr_to_int e = match e with
   | Expr.Lit (Literal.Int i) -> Z.to_int i
   | _ -> failwith "Expected integer expression"
 
-module MList
+module Make
   (S: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
     type t = (S.t EMap.t) * (Expr.t option)

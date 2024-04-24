@@ -5,7 +5,7 @@ open Gil_syntax
 
 open Utils
 
-module Sum
+module Make
   (IDs: IDs)
   (S1: MyMonadicSMemory.S)
   (S2: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
