@@ -36,6 +36,7 @@ let pred_to_str = function
 let init () = None
 let clear (v:t) : t = None
 let construct = function
+  | [] -> None
   | [v] -> Val v
   | _ -> failwith "Invalid Excl construction"
 
@@ -43,21 +44,22 @@ let execute_action action s args =
   match action, s, args with
     | Load, None, _ -> DR.error MissingState
     | Load, Val v, [] -> DR.ok (Val v, [v])
+    | Load, _, _ -> failwith "Invalid Load action"
     | Store, None, _ -> DR.error MissingState
     | Store, Val v, [v'] -> DR.ok (Val v', [])
-    | _ -> failwith (Printf.sprintf "Invalid action call")
+    | Store, _, _ -> failwith "Invalid Store action"
 
 let consume core_pred s args =
   match core_pred, s, args with
   | PointsTo, Val v, [] -> DR.ok (None, [v])
   | PointsTo, None, _ -> DR.error MissingState
-  | _ -> failwith (Printf.sprintf "Invalid core predicate consume: %s" (pred_to_str core_pred))
+  | PointsTo, _, _ -> failwith "Invalid PointsTo consume"
 
 let produce core_pred s args =
   match core_pred, s, args with
   | PointsTo, None, [v] -> Delayed.return (Val v)
   | PointsTo, Val _, _ -> Delayed.vanish ()
-  | _ -> failwith (Printf.sprintf "Invalid core predicate produce: %s" (pred_to_str core_pred))
+  | PointsTo, _, _ -> failwith "Invalid PointsTo produce"
 
 (* val substitution_in_place : st -> t -> t Delayed.t *)
 let substitution_in_place subst (heap:t) =

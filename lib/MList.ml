@@ -102,14 +102,14 @@ module MList
         )
       | SubAction _, [] -> failwith "Missing index for sub-action"
 
-    let consume pred (b, n) args =
+    let consume pred (b, n) ins =
       let open DR.Syntax in
       let open Delayed.Syntax in
-      match pred, args with
-      | SubPred p, idx :: args ->
+      match pred, ins with
+      | SubPred p, idx :: ins ->
         let** (idx, s) = state_at (b, n) idx in
-        let+ r = S.consume p s args in (match r with
-        | Ok (s', ins) -> Ok ((EMap.add idx s' b, n), idx :: ins)
+        let+ r = S.consume p s ins in (match r with
+        | Ok (s', outs) -> Ok ((EMap.remove idx b, n), outs)
         | Error e -> Error (SubError (idx, e))
         )
       | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
@@ -120,18 +120,21 @@ module MList
       )
       | Length, _ -> failwith "Invalid arguments for length consume"
 
-
-
     let produce pred (b, n) args =
       let open DR.Syntax in
       let open Delayed.Syntax in
       match pred, args with
-      | SubPred p, idx :: args ->
+      | SubPred p, idx :: args -> (
         let* r = state_at (b, n) idx in (match r with
         | Ok (idx, s) ->
           let+ s' = S.produce p s args in
           (EMap.add idx s' b, n)
-        | Error e -> failwith "Invalid indexing for produce")
+        | Error e -> match e with
+          | MissingCell _ -> (
+            let s = S.init () in
+            let+ s' = S.produce p s args in
+            (EMap.add idx s' b, n))
+          | _ -> Delayed.vanish ()))
       | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
       | Length, [n'] -> (
         match n with
@@ -181,7 +184,7 @@ module MList
       | Some s -> S.get_recovery_tactic s e
       | None -> failwith "Invalid index in get_recovery_tactic"
     )
-    | _ -> failwith "Invalid error in get_recovery_tactic"
+    | _ -> Gillian.General.Recovery_tactic.none
 
     let get_fixes (b, n) pfs tenv = function
     | SubError (idx, e) -> (
@@ -192,10 +195,10 @@ module MList
     | _ -> failwith "Invalid error in get_fixes"
 
     let can_fix = function
-    | SubError (idx, e) -> S.can_fix e
-    | MissingCell _ -> true
+    | SubError (_, e) -> S.can_fix e
+    | MissingCell _ -> false
     | OutOfBounds _ -> false
-    | MissingLength -> true
+    | MissingLength -> false
 
 
     let apply_fix (b, n) f = match f with

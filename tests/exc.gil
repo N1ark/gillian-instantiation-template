@@ -18,31 +18,31 @@ proc test_invalid_store(x) {
   return
 };
 
-spec test_load(x)
+spec test_load()
   [[ (<points_to>(;#any)) ]]
   [[ (ret == {{ #any }}) * <points_to>(;#any) ]]
   normal
-proc test_load(x) {
+proc test_load() {
   x := [load]();
   ret := x;
   return
 };
 
-spec test_load_drop(x)
+spec test_load_drop()
   [[ (<points_to>(;#any)) ]]
   [[ (ret == {{ #any }}) ]]
   normal
-proc test_load_drop(x) {
+proc test_load_drop() {
   x := [load]();
   ret := x;
   return
 };
 
-spec test_invalid_load(x)
+spec test_invalid_load()
   [[ (<points_to>(;#any)) ]]
   [[ (ret == {{ #any }}) * (<points_to>(;#any)) * (<points_to>(;#any)) ]]
   normal
-proc test_invalid_load(x) {
+proc test_invalid_load() {
   x := [load]();
   ret := x;
   return
