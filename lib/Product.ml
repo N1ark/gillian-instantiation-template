@@ -3,7 +3,7 @@ open Gillian.Symbolic
 open Gil_syntax
 module Containers = Gillian.Utils.Containers
 
-open Utils
+open MyUtils
 
 module Make
   (IDs : IDs)

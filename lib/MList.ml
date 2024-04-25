@@ -5,31 +5,17 @@ open Gil_syntax
 
 module DR = Delayed_result
 
-open Utils
-
-module EMap = Prelude.Map.Make (Expr)
-
-let expr_is_int e = match e with
-  | Expr.Lit (Literal.Int _) -> true
-  | _ -> false
-
-let expr_to_int e = match e with
-  | Expr.Lit (Literal.Int i) -> Z.to_int i
-  | _ -> failwith "Expected integer expression"
+open MyUtils
 
 module Make
   (S: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
-    type t = (S.t EMap.t) * (Expr.t option)
+    type t = (S.t ExpMap.t) * (Expr.t option)
     [@@deriving yojson]
 
     let pp fmt ((b, n): t) =
-      let pp_binding fmt (k, v) = Format.fprintf fmt "%a -> %a" Expr.pp k S.pp v in
-      let pp_opt fmt = function
-        | Some n -> Format.fprintf fmt "Some %a" Expr.pp n
-        | None -> Format.fprintf fmt "None" in
-      Format.fprintf fmt "{ %a }, %a" (Format.pp_print_list pp_binding) (EMap.bindings b) pp_opt n
-
+      Format.fprintf fmt "{ %a }, %a"
+        (ExpMap.make_pp S.pp) b (pp_opt Expr.pp) n
 
     let show s = Format.asprintf "%a" pp s
 
@@ -57,44 +43,33 @@ module Make
       | Length -> "length"
       | SubPred p -> S.pred_to_str p
 
-    let init (): t = (EMap.empty, None)
+    let init (): t = (ExpMap.empty, None)
     let clear s = s (* TODO *)
 
-    (* Returns the (reduced) key and value in the map if present *)
-    let state_at ((b, n): t) idx =
-      let open DR.Syntax in
+    let validate_index (b, n) idx =
       let open Delayed.Syntax in
       let* idx = Delayed.reduce idx in
-      let** () = match n with
+      match n with
       | Some n ->
         if%sat Formula.Infix.(idx #>= n)
         then DR.error (OutOfBounds (idx, n))
         else DR.ok ()
-      | _ -> DR.ok () in
-      match EMap.find_opt idx b with
-      | Some v -> DR.ok (idx, v) (* Direct match *)
-      | None ->
-        let rec find_match = function
-          | [] -> DR.error (MissingCell idx)
-          | (k, v) :: tl ->
-            if%sat Formula.Infix.(k #== idx)
-              (* TODO: reduce k, and replace it in the map.
-                 This means instead of returning idx * val, we'd return
-                 t * idx * val, with t the updated map containing the reduced idx.
-                 I'm not super sure it's needed though, since an index is always
-                 initially reduce before being inserted. *)
-            then DR.ok (k, v)
-            else find_match tl in
-        find_match (EMap.bindings b)
+      | None -> DR.ok ()
+
+    let state_at ((b, n): t) idx =
+      let open DR.Syntax in
+      let** () = validate_index (b, n) idx in
+      ExpMap.sym_find_res idx b ~err:(MissingCell idx)
 
     let execute_action action ((b, n): t) (args: Values.t list): (t * Values.t list, err_t) DR.t =
       let open DR.Syntax in
       let open Delayed.Syntax in
       match action, args with
       | SubAction a, idx :: args ->
-        let** (idx, s) = state_at (b, n) idx in
+        let** () = validate_index (b, n) idx in
+        let** (idx, s) = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
         let+ r = S.execute_action a s args in (match r with
-        | Ok (s', v) -> Ok ((EMap.add idx s' b, n), v)
+        | Ok (s', v) -> Ok ((ExpMap.add idx s' b, n), v)
         | Error e -> Error (SubError (idx, e))
         )
       | SubAction _, [] -> failwith "Missing index for sub-action"
@@ -104,9 +79,10 @@ module Make
       let open Delayed.Syntax in
       match pred, ins with
       | SubPred p, idx :: ins ->
-        let** (idx, s) = state_at (b, n) idx in
+        let** () = validate_index (b, n) idx in
+        let** (idx, s) = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
         let+ r = S.consume p s ins in (match r with
-        | Ok (s', outs) -> Ok ((EMap.remove idx b, n), outs)
+        | Ok (s', outs) -> Ok ((ExpMap.remove idx b, n), outs)
         | Error e -> Error (SubError (idx, e))
         )
       | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
@@ -121,16 +97,10 @@ module Make
       let open Delayed.Syntax in
       match pred, args with
       | SubPred p, idx :: args -> (
-        let* r = state_at (b, n) idx in (match r with
-        | Ok (idx, s) ->
-          let+ s' = S.produce p s args in
-          (EMap.add idx s' b, n)
-        | Error e -> match e with
-          | MissingCell _ -> (
-            let s = S.init () in
-            let+ s' = S.produce p s args in
-            (EMap.add idx s' b, n))
-          | _ -> Delayed.vanish ()))
+        let*? _ = validate_index (b, n) idx in
+        let* (idx, s) = ExpMap.sym_find_default idx b ~default:S.init in
+        let+ s' = S.produce p s args in
+        (ExpMap.add idx s' b, n))
       | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
       | Length, [n'] -> (
         match n with
@@ -149,36 +119,36 @@ module Make
       let mapper (idx, s) =
         let+ s' = S.substitution_in_place sub s in
         let idx' = Subst.subst_in_expr sub idx ~partial:true in (idx', s') in
-      let map_entries = EMap.bindings b in
+      let map_entries = ExpMap.bindings b in
       let+ sub_entries = Delayed.all (List.map mapper map_entries) in
       let merge v opt = match opt with (* if entry exists, merge the values *)
         | None -> Some v
         | Some v' -> Some (S.compose v v') in
-      let b' = List.fold_left (fun acc (idx, s) -> EMap.update idx (merge s) acc) EMap.empty sub_entries in
+      let b' = List.fold_left (fun acc (idx, s) -> ExpMap.update idx (merge s) acc) ExpMap.empty sub_entries in
       let n' = Option.map (Subst.subst_in_expr sub ~partial:true) n in
       (b', n')
 
     let lvars (b, n) =
       let open Containers.SS in
-      let lvars_map = EMap.fold (fun k v acc -> union (union (Expr.lvars k) (S.lvars v)) acc) b empty in
+      let lvars_map = ExpMap.fold (fun k v acc -> union (union (Expr.lvars k) (S.lvars v)) acc) b empty in
       match n with
       | Some n -> union lvars_map (Expr.lvars n)
       | None -> lvars_map
 
     let alocs (b, n) =
       let open Containers.SS in
-      let alocs_map = EMap.fold (fun k v acc -> union (union (Expr.alocs k) (S.alocs v)) acc) b empty in
+      let alocs_map = ExpMap.fold (fun k v acc -> union (union (Expr.alocs k) (S.alocs v)) acc) b empty in
       match n with
       | Some n -> union alocs_map (Expr.alocs n)
       | None -> alocs_map
 
     let assertions (b, n) =
       let mapper = fun k (p, i, o) -> (SubPred p, k :: i, o) in
-      EMap.fold (fun k v acc -> acc @ List.map (mapper k) (S.assertions v)) b []
+      ExpMap.fold (fun k v acc -> acc @ List.map (mapper k) (S.assertions v)) b []
 
     let get_recovery_tactic (b, n) = function
     | SubError (idx, e) -> (
-      match EMap.find_opt idx b with
+      match ExpMap.find_opt idx b with
       | Some s -> S.get_recovery_tactic s e
       | None -> failwith "Invalid index in get_recovery_tactic"
     )
@@ -186,7 +156,7 @@ module Make
 
     let get_fixes (b, n) pfs tenv = function
     | SubError (idx, e) -> (
-      let v = EMap.find idx b in
+      let v = ExpMap.find idx b in
       let mapper = fun (fs, fml, t, c) -> (List.map (fun f -> SubFix (idx, f)) fs, fml, t, c) in
       List.map mapper (S.get_fixes v pfs tenv e)
     )
@@ -202,9 +172,9 @@ module Make
     let apply_fix (b, n) = function
     | SubFix (idx, f) ->
       let open Delayed.Syntax in
-      let s = EMap.find idx b in
+      let s = ExpMap.find idx b in
       let+ r = S.apply_fix s f in
       match r with
-      | Ok s' -> Ok (EMap.add idx s' b, n)
+      | Ok s' -> Ok (ExpMap.add idx s' b, n)
       | Error e -> Error (SubError (idx, e))
 end

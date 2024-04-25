@@ -3,7 +3,7 @@ open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
 
-open Utils
+open MyUtils
 
 module Make
   (IDs: IDs)
