@@ -1,3 +1,5 @@
+(* Tests for MList(Exc) *)
+
 spec test_store(x)
   [[ (x == #x) * <length>(;1i) * <points_to>(0i;#any) ]]
   [[ (ret == null) * <length>(;1i) * <points_to>(0i;#x) ]]

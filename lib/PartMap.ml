@@ -50,7 +50,6 @@ module Make
   let init (): t = SMap.empty
 
   let clear s = s
-  let construct _ = failwith "Implement here (construct)"
 
   let execute_action action a args =
     let open Delayed.Syntax in
@@ -93,6 +92,7 @@ module Make
         SMap.add idx ss' s
 
   let compose s1 s2 = failwith "Implement here (compose)"
+  let is_fully_owned s = failwith "Implement here (is_fully_owned)"
 
   let substitution_in_place sub s =
     let open Delayed.Syntax in

@@ -1,3 +1,5 @@
+(* Tests for Exc *)
+
 spec test_store(x)
   [[ (x == #x) * <points_to>(;#any) ]]
   [[ (ret == null) * <points_to>(;#x) ]]

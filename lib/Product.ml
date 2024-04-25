@@ -37,7 +37,6 @@ module Make
 
   let init (): t = (S1.init (), S2.init ())
   let clear (s1, s2) = (S1.clear s1, S2.clear s2)
-  let construct _ = failwith "Implement here (construct)"
 
   let execute_action action (s1, s2) args =
     let open Delayed.Syntax in
@@ -77,6 +76,7 @@ module Make
 
 
   let compose s1 s2 = failwith "Not implemented"
+  let is_fully_owned (s1, s2) = S1.is_fully_owned s1 && S2.is_fully_owned s2
 
   let substitution_in_place st (s1, s2) =
     let open Delayed.Syntax in

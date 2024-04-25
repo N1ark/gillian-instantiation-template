@@ -26,7 +26,6 @@ module type S = sig
   (** Initialisation *)
   val init : unit -> t
   val clear : t -> t
-  val construct : Values.t list -> t
 
   (** Execute action *)
   val execute_action : action -> t -> Values.t list -> (t * Values.t list, err_t) result Delayed.t
@@ -37,6 +36,9 @@ module type S = sig
 
   (** Composition *)
   val compose : t -> t -> t
+
+  (* For Freeable *)
+  val is_fully_owned : t -> bool
 
   (* Core predicates: pred * ins * outs, converted to Asrt.GA *)
   val assertions : t -> (pred * Expr.t list * Expr.t list) list

@@ -10,6 +10,7 @@ module Make
   (S1: MyMonadicSMemory.S)
   (S2: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
+  (* TODO: Should be | None | S1 of S1.t | S2 of S2.t *)
   type t = | S1 of S1.t | S2 of S2.t
   [@@deriving show, yojson]
 
@@ -49,7 +50,6 @@ module Make
   let clear s = match s with
     | S1 s1 -> S1 (S1.clear s1)
     | S2 s2 -> S2 (S2.clear s2)
-  let construct _ = failwith "Implement here (construct)"
 
   let execute_action action s args =
     let open Delayed.Syntax in
@@ -88,6 +88,7 @@ module Make
     | _ -> failwith "Sum.produce: mismatched arguments"
 
   let compose s1 s2 = failwith "Sum.compose not implemented"
+  let is_fully_owned s = split_state S1.is_fully_owned S2.is_fully_owned s
 
   let substitution_in_place st t =
     let open Delayed.Syntax in

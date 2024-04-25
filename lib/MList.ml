@@ -59,9 +59,6 @@ module Make
 
     let init (): t = (EMap.empty, None)
     let clear s = s (* TODO *)
-    let construct = function
-    | [l] -> (EMap.empty, Some l)
-    | _ -> failwith "Invalid list construction, expected one argument"
 
     (* Returns the (reduced) key and value in the map if present *)
     let state_at ((b, n): t) idx =
@@ -121,7 +118,6 @@ module Make
       | Length, _ -> failwith "Invalid arguments for length consume"
 
     let produce pred (b, n) args =
-      let open DR.Syntax in
       let open Delayed.Syntax in
       match pred, args with
       | SubPred p, idx :: args -> (
@@ -145,6 +141,8 @@ module Make
       | Length, _ -> failwith "Invalid arguments for length produce"
 
     let compose s1 s2 = failwith "Not implemented"
+
+    let is_fully_owned s = failwith "Implement here (is_fully_owned)"
 
     let substitution_in_place sub (b, n) =
       let open Delayed.Syntax in
@@ -201,7 +199,7 @@ module Make
     | MissingLength -> false
 
 
-    let apply_fix (b, n) f = match f with
+    let apply_fix (b, n) = function
     | SubFix (idx, f) ->
       let open Delayed.Syntax in
       let s = EMap.find idx b in

@@ -35,10 +35,6 @@ let pred_to_str = function
 
 let init () = None
 let clear (v:t) : t = None
-let construct = function
-  | [] -> None
-  | [v] -> Val v
-  | _ -> failwith "Invalid Excl construction"
 
 let execute_action action s args =
   match action, s, args with
@@ -75,6 +71,10 @@ let compose s1 s2 = match s1, s2 with
   | None, _ -> s2
   | _, None -> s1
   | _ -> failwith "Invalid Excl composition" (* ?? not sure *)
+
+let is_fully_owned = function
+  | None -> false
+  | Val _ -> true
 
 let lvars s = match s with
   | None -> Containers.SS.empty
