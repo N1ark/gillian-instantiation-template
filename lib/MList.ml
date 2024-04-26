@@ -40,8 +40,8 @@ module Make
     | "length" -> Some Length
     | str -> Option.map (fun p -> SubPred p) (S.pred_from_str str)
     let pred_to_str = function
-      | Length -> "length"
-      | SubPred p -> S.pred_to_str p
+    | Length -> "length"
+    | SubPred p -> S.pred_to_str p
 
     let init (): t = (ExpMap.empty, None)
     let clear s = s (* TODO *)
@@ -144,7 +144,10 @@ module Make
 
     let assertions (b, n) =
       let mapper = fun k (p, i, o) -> (SubPred p, k :: i, o) in
-      ExpMap.fold (fun k v acc -> acc @ List.map (mapper k) (S.assertions v)) b []
+      let sub_asrts = ExpMap.fold (fun k v acc -> acc @ List.map (mapper k) (S.assertions v)) b [] in
+      match n with
+      | Some n -> (Length, [], [n]) :: sub_asrts
+      | None -> sub_asrts
 
     let get_recovery_tactic (b, n) = function
     | SubError (idx, e) -> (

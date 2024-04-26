@@ -61,19 +61,31 @@ module type S = sig
   val apply_fix : t -> c_fix_t -> (t, err_t) result Delayed.t
 end
 
+module Defaults = struct
+  (* Assume no "global context" for now *)
+  type init_data = unit
+  let get_init_data _ = ()
+
+  let is_overlapping_asrt _ = false
+  let copy state = state (* assumes state is immutable *)
+  let get_print_info _ _ = (Containers.SS.empty, Containers.SS.empty)
+  let sure_is_nonempty _ = false
+  let get_failing_constraint e = failwith "Implement here (get_failing_constraint)"
+  let split_further _ _ _ _ = failwith "Implement here (split_further)"
+  let clean_up ?(keep=Expr.Set.empty) _ = failwith "Implement here (clean_up)"
+  let mem_constraints s = []
+end
+
 
 module Make (Mem: S): MonadicSMemory.S with type init_data = unit = struct
   include Mem
 
-  (* Assume no "global context" for now *)
-  type init_data = unit
-  let get_init_data _ = ()
+  include Defaults
 
   (* Can't do much more anyways *)
   type vt = Values.t
   type st = Subst.t
   type action_ret = (t * vt list, err_t) result
-
 
   (* Wrap action / consume / produce with a nice type *)
   let execute_action ~(action_name: string) (state: t) (args: vt list): action_ret Delayed.t =
@@ -96,16 +108,8 @@ module Make (Mem: S): MonadicSMemory.S with type init_data = unit = struct
     List.map (fun (p, ins, outs) -> Asrt.GA (pred_to_str p, ins, outs)) asrts
 
   (* Override methods to keep implementations light *)
-  let is_overlapping_asrt _ = false
-  let copy state = state (* assumes state is immutable *)
   let pp fmt s = Format.pp_print_string fmt (show s)
   let pp_err fmt e = Format.pp_print_string fmt (show_err_t e)
   let pp_c_fix fmt f = Format.pp_print_string fmt (show_c_fix_t f)
   let pp_by_need _ = pp
-  let get_print_info _ _ = (Containers.SS.empty, Containers.SS.empty)
-  let sure_is_nonempty _ = false
-  let get_failing_constraint e = failwith "Implement here (get_failing_constraint)"
-  let split_further _ _ _ _ = failwith "Implement here (split_further)"
-  let clean_up ?(keep=Expr.Set.empty) _ = failwith "Implement here (clean_up)"
-  let mem_constraints s = []
 end
