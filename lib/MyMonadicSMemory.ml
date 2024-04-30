@@ -40,6 +40,9 @@ module type S = sig
   (* For Freeable *)
   val is_fully_owned : t -> bool
 
+  (* For PMap *)
+  val is_empty : t -> bool
+
   (* Core predicates: pred * ins * outs, converted to Asrt.GA *)
   val assertions : t -> (pred * Expr.t list * Expr.t list) list
 

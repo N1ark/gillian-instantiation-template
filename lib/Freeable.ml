@@ -86,6 +86,10 @@ module Make
     | SubState s -> S.is_fully_owned s
     | Freed -> true
 
+    let is_empty = function
+    | SubState s -> S.is_empty s
+    | Freed -> false
+
     let substitution_in_place sub s =
       let open Delayed.Syntax in
       match s with

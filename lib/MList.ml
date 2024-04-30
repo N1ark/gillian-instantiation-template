@@ -114,6 +114,8 @@ module Make
 
     let is_fully_owned s = failwith "Implement here (is_fully_owned)"
 
+    let is_empty s = false (* TODO *)
+
     let substitution_in_place sub (b, n) =
       let open Delayed.Syntax in
       let mapper (idx, s) =
