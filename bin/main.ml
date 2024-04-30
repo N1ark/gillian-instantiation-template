@@ -1,7 +1,7 @@
 open Gillian
 open Instantiation
 
-module MyMem = MList.Make(Freeable.Make (Exc))
+module MyMem = PartMap.Make (PartMap.StringIndex) (Exc)
 module PatchedMem = MyMonadicSMemory.Make (MyMem)
 module SMemory = Gillian.Monadic.MonadicSMemory.Lift (PatchedMem)
 

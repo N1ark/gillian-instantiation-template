@@ -4,140 +4,226 @@ open Gillian.Symbolic
 open Gil_syntax
 module DR = Delayed_result
 
+open MyUtils
+
+(** Type for the domain of a PartMap.
+    Allows configuring it to either have static or dynamic indexing:
+    - Static: indexes are created by the memory model on allocation
+    - Dynamic: indexes are given by the user on allocation
+    The user must provide the index on allocation in dynamic mode, and mustn't provide it in static mode.
+    is_valid_index must always be implemented, while make_fresh is only needed in static mode.
+     *)
 module type PartMapIndex = sig
-  include Prelude.Map.OrderedType
-  val pp : Format.formatter -> t -> unit
-  val of_val : Expr.t -> t
-  val substitute: Subst.t -> t -> t
+  val mode : [`Static | `Dynamic]
+  val is_valid_index : Expr.t -> bool Delayed.t
+  val make_fresh : unit -> Expr.t Delayed.t
+end
+
+module LocationIndex : PartMapIndex = struct
+  let mode = `Static
+  let is_valid_index = function
+  | Expr.ALoc _ | Expr.Lit (Loc _) -> Delayed.return true
+  | _ -> Delayed.return false
+  let make_fresh () =
+    let loc_name = ALoc.alloc () in
+    Delayed.return (Expr.ALoc loc_name)
+end
+
+module StringIndex : PartMapIndex = struct
+  let mode = `Dynamic
+  let is_valid_index = function
+  | Expr.Lit (String _) -> Delayed.return true
+  | _ -> Delayed.return false
+  let make_fresh () = failwith "Not implemented (StringIndex.make_fresh)"
 end
 
 module Make
   (I: PartMapIndex)
   (S: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
-  (* TODO: This is all wrong, states in the map are not accessed like this
-     (see MList for something more accurate) *)
+  type t = (S.t ExpMap.t) * (Expr.t option)
+  [@@deriving yojson]
 
-  module SMap = Prelude.Map.Make (I)
+  let pp fmt ((h, d): t) =
+    Format.fprintf fmt "{ %a }, (%a)"
+      (ExpMap.make_pp S.pp) h
+      (pp_opt Expr.pp) d
+
+  let show s = Format.asprintf "%a" pp s
 
   type c_fix_t =
-  | FAddIndex of I.t
-  | FInnerFix of I.t * S.c_fix_t
+  | SubFix of Expr.t * S.c_fix_t
   [@@deriving show]
 
   type err_t =
-  | IndexNotInArgs
-  | MissingIndex of I.t
-  | InnerError of I.t * S.err_t
+  | MissingCell of Expr.t
+  | NotAllocated of Expr.t
+  | AlreadyAllocated of Expr.t
+  | InvalidIndexValue of Expr.t
+  | SubError of Expr.t * S.err_t
   [@@deriving show, yojson]
 
-  type t = S.t SMap.t
-  [@@deriving yojson]
+  type action =
+  | Alloc
+  | SubAction of S.action
 
-  let show s = "can't pp PartMap yet"
-  let pp fmt s = Format.fprintf fmt "%s" (show s)
+  let action_from_str = function
+  | "alloc" -> Some Alloc
+  | s -> Option.map (fun a -> SubAction a) (S.action_from_str s)
 
-  type action = S.action
-  let action_from_str = S.action_from_str
-  type pred = S.pred
-  let pred_from_str = S.pred_from_str
-  let pred_to_str = S.pred_to_str
+  type pred =
+  | SubPred of S.pred
+  let pred_from_str s = Option.map (fun p -> SubPred p) (S.pred_from_str s)
+  let pred_to_str = function
+  | SubPred p -> S.pred_to_str p
 
-  let map_entries s f =
-    SMap.to_list s
-    |> List.map (fun (idx, s) -> f s)
-
-  let init (): t = SMap.empty
+  let init (): t = (ExpMap.empty, None)
 
   let clear s = s
 
-  let execute_action action a args =
+  let validate_index ((h, d): t) idx =
     let open Delayed.Syntax in
-    match args with
-    | [] -> Delayed.return (Error IndexNotInArgs)
-    | idx :: args ->
-      let idx = I.of_val idx in
-      match SMap.find_opt idx a with
-      | None -> Delayed.return (Error (MissingIndex idx))
-      | Some s ->
-        let+ result = S.execute_action action s args in
-        match result with
-        | Ok (s', args') -> Ok (SMap.add idx s' a, args')
-        | Error e -> Error (InnerError (idx, e))
+    let* valid_idx = I.is_valid_index idx in
+    if valid_idx = false
+    then DR.error (InvalidIndexValue idx)
+    else
+      let* match_val = ExpMap.sym_find_opt idx h in
+      match match_val, d with
+      | Some (idx, v), _ -> DR.ok (idx, v)
+      | None, None -> DR.error (MissingCell idx)
+      | None, Some d ->
+        if%sat Formula.SetMem (idx, d)
+        then DR.error (NotAllocated idx)
+        else DR.error (MissingCell idx)
 
-  let consume pred s args =
-    let open Delayed.Syntax in
-    match args with
-    | [] -> Delayed.return (Error IndexNotInArgs)
-    | idx :: args ->
-      let idx = I.of_val idx in
-      match SMap.find_opt idx s with
-      | None -> Delayed.return (Error (MissingIndex idx))
-      | Some ss ->
-        let+ result = S.consume pred ss args in
-        match result with
-        | Ok (ss', args') -> Ok (SMap.add idx ss' s, args')
-        | Error e -> Error (InnerError (idx, e))
+  let modify_domain f d =
+    match d with
+    | None -> d
+    | Some (Expr.ESet d) -> Some (Expr.ESet (f d))
+    | Some _ -> failwith "Invalid index set"
 
-  let produce pred s args =
+  let update_entry (h, d) idx s =
+    if S.is_empty s
+    then (ExpMap.remove idx h, d)
+    else (ExpMap.add idx s h, d)
+
+  let execute_action action ((h, d): t) args =
     let open Delayed.Syntax in
-    match args with
-    | [] -> Delayed.return s
-    | idx :: args ->
-      let idx = I.of_val idx in
-      match SMap.find_opt idx s with
-      | None -> Delayed.return s
-      | Some ss ->
-        let+ ss' = S.produce pred ss args in
-        SMap.add idx ss' s
+    let open DR.Syntax in
+    match action, args with
+    | SubAction action, [] -> failwith "Missing index for sub-action"
+    | SubAction action, idx :: args ->
+      let** (idx, s) = validate_index (h, d) idx in
+      let+ r = S.execute_action action s args in (
+      match r with
+      | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
+      | Error e -> Error (SubError (idx, e)))
+    | Alloc, _ ->
+      let+* idx = match args, I.mode with
+      | [], `Static -> let+ idx = I.make_fresh () in Ok idx
+      | [idx], `Dynamic ->
+        (* Check index is valid, and is not already allocated *)
+        let* valid_idx = I.is_valid_index idx in
+        if valid_idx = false
+        then DR.error (InvalidIndexValue idx)
+        else let+ found_val = ExpMap.sym_find_opt idx h in (
+          match found_val with
+          | Some _ -> Error (AlreadyAllocated idx)
+          | None -> Ok idx)
+      | _ -> failwith "Invalid number of arguments for allocation" in
+      let s = S.init () in
+      let h' = ExpMap.add idx s h in
+      let d' = modify_domain (fun d -> idx :: d) d in
+      Ok ((h', d'), [idx])
+
+  let consume pred ((h, d): t) (args: Expr.t list): (t * Expr.t list, err_t) DR.t =
+    let open Delayed.Syntax in
+    let open DR.Syntax in
+    match pred, args with
+    | SubPred pred, [] -> failwith "Missing index for sub-predicate"
+    | SubPred pred, idx :: args ->
+      let** (idx, s) = validate_index (h, d) idx in
+      let+ r = S.consume pred s args in (
+      match r with
+      | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
+      | Error e -> Error (SubError (idx, e)))
+
+  let produce pred (h, d) args =
+    let open Delayed.Syntax in
+    match pred, args with
+    | SubPred pred, [] -> failwith "Missing index for sub-predicate"
+    | SubPred pred, idx :: args ->
+      let* r = validate_index (h, d) idx in
+      match r with
+      | Ok (idx, s) ->
+        let+ s' = S.produce pred s args in
+        update_entry (h, d) idx s'
+      | Error (MissingCell idx) ->
+        let s = S.init () in
+        let+ s' = S.produce pred s args in
+        update_entry (h, d) idx s'
+      | Error _ -> Delayed.vanish ()
 
   let compose s1 s2 = failwith "Implement here (compose)"
   let is_fully_owned s = failwith "Implement here (is_fully_owned)"
+  let is_empty s = failwith "Implement here (is_empty)"
 
-  let substitution_in_place sub s =
+  let substitution_in_place sub (h, d) =
     let open Delayed.Syntax in
     let mapper (idx, s) =
       let+ s' = S.substitution_in_place sub s in
-      let idx' = I.substitute sub idx in (idx', s') in
-    let map_entries = SMap.bindings s in
-    let+ sub_entries = Delayed.all (List.map mapper map_entries) in
-    let merge v opt = match opt with (* if entry exists, merge the values *)
-      | None -> Some v
-      | Some v' -> Some (S.compose v v') in
-    List.fold_left (fun acc (idx, s) -> SMap.update idx (merge s) acc) SMap.empty sub_entries
+      let idx' = Subst.subst_in_expr sub idx ~partial:true in (idx', s') in
+    let map_entries = ExpMap.bindings h in
+    let* sub_entries = Delayed.all (List.map mapper map_entries) in
+    let merger acc (idx, s) =
+      let* acc = acc in
+      let+ matching = ExpMap.sym_find_opt idx acc in
+      match matching with
+      | Some (idx, s') -> ExpMap.add idx (S.compose s s') acc
+      | None -> ExpMap.add idx s acc in
+    let+ h' = List.fold_left merger (Delayed.return ExpMap.empty) sub_entries in
+    (h', d)
 
-  let lvars s =
+  let lvars (h, d) =
     let open Containers.SS in
-    SMap.fold (fun _ s acc -> union acc (S.lvars s)) s empty
+    let lvars_map = ExpMap.fold (fun _ s acc -> union acc (S.lvars s)) h empty in
+    match d with
+    | None -> lvars_map
+    | Some d -> union lvars_map (Expr.lvars d)
 
-  let alocs s =
+  let alocs (h, d) =
     let open Containers.SS in
-    SMap.fold (fun _ s acc -> union acc (S.alocs s)) s empty
+    let alocs_map = ExpMap.fold (fun _ s acc -> union acc (S.alocs s)) h empty in
+    match d with
+    | None -> alocs_map
+    | Some d -> union alocs_map (Expr.alocs d)
 
-  let assertions s = map_entries s S.assertions |> List.flatten
-  let get_recovery_tactic (s:t) (e:err_t) = match e with
-    | InnerError (idx, e) -> S.get_recovery_tactic (SMap.find idx s) e
-    | _ -> failwith "Implement here (get_recovery_tactic)"
+  let assertions (h, d) =
+    let subasrts = ExpMap.fold (fun _ s acc -> S.assertions s @ acc) h [] in
+    List.map (fun (a, i, o) -> (SubPred a, i, o)) subasrts
 
-  let get_fixes s pfs tenv e = match e with
-    | InnerError (idx, e) ->
-      let fixes = S.get_fixes (SMap.find idx s) pfs tenv e in
-      List.map (fun (f, fs, vs, ss) -> (List.map (fun f -> FInnerFix (idx, f)) f, fs, vs, ss)) fixes
+  let get_recovery_tactic (h, d) = function
+    | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
+    | _ -> Gillian.General.Recovery_tactic.none
+
+  let get_fixes (h, d) pfs tenv = function
+    | SubError (idx, e) ->
+      let fixes = S.get_fixes (ExpMap.find idx h) pfs tenv e in
+      List.map (fun (f, fs, vs, ss) -> (List.map (fun f -> SubFix (idx, f)) f, fs, vs, ss)) fixes
     | _ -> failwith "Implement here (get_fixes)"
 
-  let can_fix e = match e with
-    | InnerError (idx, e) -> S.can_fix e
-    | _ -> failwith "Implement here (can_fix)"
+  let can_fix = function
+    | SubError (_, e) -> S.can_fix e
+    | _ -> false (* TODO *)
 
-  let apply_fix (s:t) f =
+  let apply_fix (h, d) f =
     let open Delayed.Syntax in
     match f with
-    | FInnerFix (idx, f) ->
-      let ss = SMap.find idx s in
-      let+ ss' = S.apply_fix ss f in
-      (match ss' with
-      | Ok ss' -> Ok (SMap.add idx ss' s)
-      | Error e -> Error (InnerError (idx, e)))
-    | _ -> failwith "Implement here (apply_fix)"
+    | SubFix (idx, f) ->
+      let s = ExpMap.find idx h in
+      let+ r = S.apply_fix s f in
+      (match r with
+      | Ok s' -> Ok (ExpMap.add idx s' h, d)
+      | Error e -> Error (SubError (idx, e)))
 
 end

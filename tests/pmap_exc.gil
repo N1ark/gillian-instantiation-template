@@ -1,0 +1,31 @@
+(* Tests for PMap(StringIndex, Exc) *)
+
+spec test_store(x)
+  [[ (x == #x) * <points_to>("field";#any) ]]
+  [[ (ret == null) * <points_to>("field";#x) ]]
+  normal
+proc test_store(x) {
+  e := [store]("field", x);
+  ret := null;
+  return
+};
+
+spec test_invalid_store(x)
+  [[ (x == #x) ]]
+  [[ (ret == null) ]]
+  normal
+proc test_invalid_store(x) {
+  e := [store]("field", x);
+  ret := null;
+  return
+};
+
+spec test_load()
+  [[ (<points_to>("field";#any)) ]]
+  [[ (ret == {{ #any }}) * <points_to>("field";#any) ]]
+  normal
+proc test_load() {
+  x := [load]("field");
+  ret := x;
+  return
+};
