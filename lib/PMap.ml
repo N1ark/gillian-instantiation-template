@@ -6,20 +6,20 @@ module DR = Delayed_result
 
 open MyUtils
 
-(** Type for the domain of a PartMap.
+(** Type for the domain of a PMap.
     Allows configuring it to either have static or dynamic indexing:
     - Static: indexes are created by the memory model on allocation
     - Dynamic: indexes are given by the user on allocation
     The user must provide the index on allocation in dynamic mode, and mustn't provide it in static mode.
     is_valid_index must always be implemented, while make_fresh is only needed in static mode.
      *)
-module type PartMapIndex = sig
+module type PMapIndex = sig
   val mode : [`Static | `Dynamic]
   val is_valid_index : Expr.t -> bool Delayed.t
   val make_fresh : unit -> Expr.t Delayed.t
 end
 
-module LocationIndex : PartMapIndex = struct
+module LocationIndex : PMapIndex = struct
   let mode = `Static
   let is_valid_index = function
   | Expr.ALoc _ | Expr.Lit (Loc _) -> Delayed.return true
@@ -29,7 +29,7 @@ module LocationIndex : PartMapIndex = struct
     Delayed.return (Expr.ALoc loc_name)
 end
 
-module StringIndex : PartMapIndex = struct
+module StringIndex : PMapIndex = struct
   let mode = `Dynamic
   let is_valid_index = function
   | Expr.Lit (String _) -> Delayed.return true
@@ -38,7 +38,7 @@ module StringIndex : PartMapIndex = struct
 end
 
 module Make
-  (I: PartMapIndex)
+  (I: PMapIndex)
   (S: MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   type t = (S.t ExpMap.t) * (Expr.t option)
