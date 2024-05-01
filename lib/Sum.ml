@@ -18,38 +18,37 @@ module Make
 
   type action = | A1 of S1.action | A2 of S2.action
   let action_from_str s = match IDer.get_ided s with
-    | ID1 s -> Option.map (fun a -> A1 a) (S1.action_from_str s)
-    | ID2 s -> Option.map (fun a -> A2 a) (S2.action_from_str s)
-    | NotIDed _ -> None
+  | ID1 s -> Option.map (fun a -> A1 a) (S1.action_from_str s)
+  | ID2 s -> Option.map (fun a -> A2 a) (S2.action_from_str s)
+  | NotIDed _ -> None
 
   type pred = | P1 of S1.pred | P2 of S2.pred
   let pred_from_str s =  match IDer.get_ided s with
-    | ID1 s -> Option.map (fun p -> P1 p) (S1.pred_from_str s)
-    | ID2 s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
-    | NotIDed _ -> None
+  | ID1 s -> Option.map (fun p -> P1 p) (S1.pred_from_str s)
+  | ID2 s -> Option.map (fun p -> P2 p) (S2.pred_from_str s)
+  | NotIDed _ -> None
   let pred_to_str = function
-    | P1 p -> IDs.id1 ^ S1.pred_to_str p
-    | P2 p -> IDs.id2 ^ S2.pred_to_str p
+  (* TODO: make this flexible to allow IDing with eg. suffixes *)
+  | P1 p -> IDs.id1 ^ S1.pred_to_str p
+  | P2 p -> IDs.id2 ^ S2.pred_to_str p
 
   type c_fix_t = | F1 of S1.c_fix_t | F2 of S2.c_fix_t
   [@@deriving show]
   type err_t = | E1 of S1.err_t | E2 of S2.err_t
   [@@deriving show, yojson]
 
-  let split_state f1 f2 s =
-    match s with
-    | S1 s1 -> f1 s1
-    | S2 s2 -> f2 s2
+  let split_state f1 f2 = function
+  | S1 s1 -> f1 s1
+  | S2 s2 -> f2 s2
 
-  let split_err f1 f2 e =
-    match e with
-    | E1 e1 -> f1 e1
-    | E2 e2 -> f2 e2
+  let split_err f1 f2 = function
+  | E1 e1 -> f1 e1
+  | E2 e2 -> f2 e2
 
   let init () = S1 (S1.init ())
-  let clear s = match s with
-    | S1 s1 -> S1 (S1.clear s1)
-    | S2 s2 -> S2 (S2.clear s2)
+  let clear = function
+  | S1 s1 -> S1 (S1.clear s1)
+  | S2 s2 -> S2 (S2.clear s2)
 
   let execute_action action s args =
     let open Delayed.Syntax in
@@ -81,43 +80,47 @@ module Make
   let produce pred s args =
     let open Delayed.Syntax in
     match pred, s with
-    | P1 pred, S1 s1 ->
-      let+ s1' = S1.produce pred s1 args in S1 s1'
-    | P2 pred, S2 s2 ->
-      let+ s2' = S2.produce pred s2 args in S2 s2'
+    | P1 pred, S1 s1 -> let+ s1' = S1.produce pred s1 args in S1 s1'
+    | P2 pred, S2 s2 -> let+ s2' = S2.produce pred s2 args in S2 s2'
     | _ -> failwith "Sum.produce: mismatched arguments"
 
-  let compose s1 s2 = failwith "Sum.compose not implemented"
-  let is_fully_owned s = split_state S1.is_fully_owned S2.is_fully_owned s
-  let is_empty s = split_state S1.is_empty S2.is_empty s
+  let compose s1 s2 =
+    let open Delayed.Syntax in
+    match s1, s2 with
+    | S1 s1, S1 s2 -> let+ s' = S1.compose s1 s2 in S1 s'
+    | S2 s1, S2 s2 -> let+ s' = S2.compose s1 s2 in S2 s'
+    | _ -> failwith "Sum.compose: mismatched arguments"
+
+  let is_fully_owned = split_state S1.is_fully_owned S2.is_fully_owned
+  let is_empty = split_state S1.is_empty S2.is_empty
   let instantiate v = S1 (S1.instantiate v) (* TODO: does it even make sense? forbid? *)
 
-  let substitution_in_place st t =
+  let substitution_in_place st =
     let open Delayed.Syntax in
-    match t with
+    function
     | S1 t1 -> let+ t1' = S1.substitution_in_place st t1 in S1 t1'
     | S2 t2 -> let+ t2' = S2.substitution_in_place st t2 in S2 t2'
 
   let lvars = split_state S1.lvars S2.lvars
   let alocs = split_state S1.alocs S2.alocs
   let assertions = function
-    | S1 s1 -> List.map (fun (p, i, o) -> (P1 p, i, o)) (S1.assertions s1)
-    | S2 s2 -> List.map (fun (p, i, o) -> (P2 p, i, o)) (S2.assertions s2)
+  | S1 s1 -> List.map (fun (p, i, o) -> (P1 p, i, o)) (S1.assertions s1)
+  | S2 s2 -> List.map (fun (p, i, o) -> (P2 p, i, o)) (S2.assertions s2)
 
   let get_recovery_tactic s e = match s, e with
-    | S1 s1, E1 e1 -> S1.get_recovery_tactic s1 e1
-    | S2 s2, E2 e2 -> S2.get_recovery_tactic s2 e2
-    | _ -> failwith "get_recovery_tactic: mismatched arguments"
+  | S1 s1, E1 e1 -> S1.get_recovery_tactic s1 e1
+  | S2 s2, E2 e2 -> S2.get_recovery_tactic s2 e2
+  | _ -> failwith "get_recovery_tactic: mismatched arguments"
 
   let get_fixes s pfs tenv e =
-    match s, e with
-    | S1 s1, E1 e1 ->
-      let fixes = S1.get_fixes s1 pfs tenv e1 in
-      (List.map (fun (fxs, fml, vars, lvars) -> (List.map (fun fx -> F1 fx) fxs, fml, vars, lvars)) fixes)
-    | S2 s2, E2 e2 ->
-      let fixes = S2.get_fixes s2 pfs tenv e2 in
-      (List.map (fun (fxs, fml, vars, lvars) -> (List.map (fun fx -> F2 fx) fxs, fml, vars, lvars)) fixes)
-    | _ -> failwith "get_fixes: mismatched arguments"
+  match s, e with
+  | S1 s1, E1 e1 ->
+    let fixes = S1.get_fixes s1 pfs tenv e1 in
+    (List.map (fun (fxs, fml, vars, lvars) -> (List.map (fun fx -> F1 fx) fxs, fml, vars, lvars)) fixes)
+  | S2 s2, E2 e2 ->
+    let fixes = S2.get_fixes s2 pfs tenv e2 in
+    (List.map (fun (fxs, fml, vars, lvars) -> (List.map (fun fx -> F2 fx) fxs, fml, vars, lvars)) fixes)
+  | _ -> failwith "get_fixes: mismatched arguments"
 
   let can_fix = split_err S1.can_fix S2.can_fix
   let apply_fix s f =

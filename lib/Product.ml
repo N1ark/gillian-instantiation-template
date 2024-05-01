@@ -42,29 +42,29 @@ module Make
     let open Delayed.Syntax in
     match action with
     | A1 action ->
-      let+ r1 = S1.execute_action action s1 args
-      in (match r1 with
-          | Ok (s1', v) -> Ok ((s1', s2), v)
-          | Error e -> Error (E1 e))
+      let+ r1 = S1.execute_action action s1 args in (
+      match r1 with
+      | Ok (s1', v) -> Ok ((s1', s2), v)
+      | Error e -> Error (E1 e))
     | A2 action ->
-      let+ r2 = S2.execute_action action s2 args
-      in (match r2 with
-          | Ok (s2', v) -> Ok ((s1, s2'), v)
-          | Error e -> Error (E2 e))
+      let+ r2 = S2.execute_action action s2 args in (
+      match r2 with
+      | Ok (s2', v) -> Ok ((s1, s2'), v)
+      | Error e -> Error (E2 e))
 
   let consume pred (s1,s2) args =
     let open Delayed.Syntax in
     match pred with
     | P1 pred ->
-      let+ r1 = S1.consume pred s1 args
-      in (match r1 with
-          | Ok (s1', v) -> Ok ((s1', s2), v)
-          | Error e -> Error (E1 e))
+      let+ r1 = S1.consume pred s1 args in (
+      match r1 with
+      | Ok (s1', v) -> Ok ((s1', s2), v)
+      | Error e -> Error (E1 e))
     | P2 pred ->
-      let+ r2 = S2.consume pred s2 args
-      in (match r2 with
-          | Ok (s2', v) -> Ok ((s1, s2'), v)
-          | Error e -> Error (E2 e))
+      let+ r2 = S2.consume pred s2 args in (
+      match r2 with
+      | Ok (s2', v) -> Ok ((s1, s2'), v)
+      | Error e -> Error (E2 e))
 
   let produce pred (s1, s2) args =
     let open Delayed.Syntax in
@@ -75,7 +75,12 @@ module Make
       let+ s2' = S2.produce pred s2 args in (s1, s2')
 
 
-  let compose s1 s2 = failwith "Not implemented"
+  let compose (s1a, s2a) (s1b, s2b) =
+    let open Delayed.Syntax in
+    let* s1' = S1.compose s1a s1b in
+    let+ s2' = S2.compose s2a s2b in
+    (s1', s2')
+
   let is_fully_owned (s1, s2) = S1.is_fully_owned s1 && S2.is_fully_owned s2
   let is_empty (s1, s2) = S1.is_empty s1 && S2.is_empty s2
   let instantiate v = (S1.instantiate v, S2.instantiate v) (* Maybe forbid it? *)
@@ -90,32 +95,31 @@ module Make
   let alocs (s1, s2) = Containers.SS.union (S1.alocs s1) (S2.alocs s2)
 
   let assertions (s1, s2) =
-    (* Override predicates by appending 1/2, so we can then pass the predicates to the right
-       part of state when consuming/producing *)
     let a1 = S1.assertions s1 in
     let a1 = List.map (fun (p, i, o) -> (P1 p, i, o)) a1 in
     let a2 = S2.assertions s2 in
     let a2 = List.map (fun (p, i, o) -> (P2 p, i, o)) a2 in
     a1 @ a2
 
-  let get_recovery_tactic (s1, s2) e = match e with
-    | E1 e -> S1.get_recovery_tactic s1 e
-    | E2 e -> S2.get_recovery_tactic s2 e
+  let get_recovery_tactic (s1, s2) = function
+  | E1 e -> S1.get_recovery_tactic s1 e
+  | E2 e -> S2.get_recovery_tactic s2 e
 
-  let get_fixes (s1, s2) pfs tenv e = match e with
-    | E1 e ->
-      let fixes = S1.get_fixes s1 pfs tenv e in
-      List.map (fun (f, fs, vs, ss) -> (List.map (fun f -> F1 f) f, fs, vs, ss)) fixes
-    | E2 e ->
-      let fixes = S2.get_fixes s2 pfs tenv e in
-      List.map (fun (f, fs, vs, ss) -> (List.map (fun f -> F2 f) f, fs, vs, ss)) fixes
+  let get_fixes (s1, s2) pfs tenv = function
+  | E1 e ->
+    let fixes = S1.get_fixes s1 pfs tenv e in
+    List.map (fun (f, fs, vs, ss) -> (List.map (fun f -> F1 f) f, fs, vs, ss)) fixes
+  | E2 e ->
+    let fixes = S2.get_fixes s2 pfs tenv e in
+    List.map (fun (f, fs, vs, ss) -> (List.map (fun f -> F2 f) f, fs, vs, ss)) fixes
 
-  let can_fix e = match e with
-    | E1 e -> S1.can_fix e
-    | E2 e -> S2.can_fix e
-  let apply_fix (s1, s2) f =
+  let can_fix = function
+  | E1 e -> S1.can_fix e
+  | E2 e -> S2.can_fix e
+
+  let apply_fix (s1, s2) =
     let open Delayed.Syntax in
-    match f with
+    function
     | F1 f ->
       let+ s1' = S1.apply_fix s1 f in (match s1' with
       | Ok s1' -> Ok (s1', s2)

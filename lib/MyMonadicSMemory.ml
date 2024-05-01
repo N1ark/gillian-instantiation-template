@@ -35,7 +35,7 @@ module type S = sig
   val produce : pred -> t -> Values.t list -> t Delayed.t
 
   (** Composition *)
-  val compose : t -> t -> t
+  val compose : t -> t -> t Delayed.t
 
   (* For Freeable *)
   val is_fully_owned : t -> bool

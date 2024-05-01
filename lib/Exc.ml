@@ -6,9 +6,7 @@ open Gil_syntax
 module DR = Delayed_result
 module Recovery_tactic = Gillian.General.Recovery_tactic
 
-type t =
-| None
-| Val of Values.t
+type t = Expr.t option
 [@@deriving show, yojson]
 
 type c_fix_t =
@@ -39,62 +37,63 @@ let clear (v:t) : t = None
 let execute_action action s args =
   match action, s, args with
   | Load, None, _ -> DR.error MissingState
-  | Load, Val v, [] -> DR.ok (Val v, [v])
+  | Load, Some v, [] -> DR.ok (Some v, [v])
   | Load, _, _ -> failwith "Invalid Load action"
   | Store, None, _ -> DR.error MissingState
-  | Store, Val v, [v'] -> DR.ok (Val v', [])
+  | Store, Some v, [v'] -> DR.ok (Some v', [])
   | Store, _, _ -> failwith "Invalid Store action"
 
 let consume core_pred s args =
   match core_pred, s, args with
-  | PointsTo, Val v, [] -> DR.ok (None, [v])
+  | PointsTo, Some v, [] -> DR.ok (None, [v])
   | PointsTo, None, _ -> DR.error MissingState
   | PointsTo, _, _ -> failwith "Invalid PointsTo consume"
 
 let produce core_pred s args =
   match core_pred, s, args with
-  | PointsTo, None, [v] -> Delayed.return (Val v)
-  | PointsTo, Val _, _ ->
+  | PointsTo, None, [v] -> Delayed.return (Some v)
+  | PointsTo, Some _, _ ->
     Logging.normal (fun m -> m "Warning Exc: vanishing due to dup resource";);
     Delayed.vanish ()
   | PointsTo, _, _ -> failwith "Invalid PointsTo produce"
 
-(* val substitution_in_place : st -> t -> t Delayed.t *)
 let substitution_in_place subst (heap:t) =
   let open Delayed.Syntax in
   match heap with
   | None -> Delayed.return None
-  | Val v -> (
+  | Some v -> (
       let v' = Subst.subst_in_expr ~partial:true subst v in
-      Delayed.return (Val v')
+      Delayed.return (Some v')
     )
 
 let compose s1 s2 = match s1, s2 with
-| None, _ -> s2
-| _, None -> s1
-| _ -> failwith "Invalid Excl composition" (* ?? not sure *)
+| None, _ -> Delayed.return s2
+| _, None -> Delayed.return s1
+| _ -> Delayed.vanish ()
 
 let is_fully_owned = function
 | None -> false
-| Val _ -> true
+| Some _ -> true
 
 let is_empty = function
 | None -> true
-| Val _ -> false
+| Some _ -> false
 
 let instantiate = function
-| [] -> Val (Expr.int 0)
-| [v] -> Val v (* maybe we don't want two options *)
+| [] -> Some (Expr.int 0)
+| [v] -> Some v (* maybe we don't want two options *)
 | _ -> failwith "Invalid Excl instantiation"
 
-let lvars s = match s with
+let lvars = function
 | None -> Containers.SS.empty
-| Val v -> Expr.lvars v
-let alocs s = Containers.SS.empty
+| Some v -> Expr.lvars v
+let alocs = function
+| None -> Containers.SS.empty
+| Some v -> Expr.alocs v
 
 let assertions = function
 | None -> []
-| Val v -> [(PointsTo, [], [v])]
+| Some v -> [(PointsTo, [], [v])]
 
 let get_recovery_tactic (s:t) (e:err_t): Values.t Recovery_tactic.t = match e with
 (* | MissingState -> Recovery_tactic.try_unfold ??? *)
@@ -102,8 +101,9 @@ let get_recovery_tactic (s:t) (e:err_t): Values.t Recovery_tactic.t = match e wi
 
 let get_fixes s pfs tenv = function
 | MissingState -> [
+  (* TODO: ???????? *)
   ([FAddState (LVar (Generators.fresh_svar ()))], [], [], Containers.SS.empty)
 ]
 
 let can_fix = function | MissingState -> true
-let apply_fix s = function | FAddState v -> DR.ok (Val v)
+let apply_fix s = function | FAddState v -> DR.ok (Some v)

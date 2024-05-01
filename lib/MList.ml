@@ -138,11 +138,8 @@ module Make
         let+ s' = S.substitution_in_place sub s in
         let idx' = Subst.subst_in_expr sub idx ~partial:true in (idx', s') in
       let map_entries = ExpMap.bindings b in
-      let+ sub_entries = Delayed.all (List.map mapper map_entries) in
-      let merge v opt = match opt with (* if entry exists, merge the values *)
-        | None -> Some v
-        | Some v' -> Some (S.compose v v') in
-      let b' = List.fold_left (fun acc (idx, s) -> ExpMap.update idx (merge s) acc) ExpMap.empty sub_entries in
+      let* sub_entries = Delayed.all (List.map mapper map_entries) in
+      let+ b' = ExpMap.sym_compose S.compose sub_entries ExpMap.empty in
       let n' = Option.map (Subst.subst_in_expr sub ~partial:true) n in
       (b', n')
 

@@ -193,28 +193,30 @@ module Make
     )
     | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
 
-  let compose s1 s2 = failwith "Implement here (compose)"
-  let is_fully_owned s = failwith "Implement here (is_fully_owned)"
+  let compose (h1, d1) (h2, d2) =
+    let open Delayed.Syntax in
+    let* d = match d1, d2 with
+    | d1, None -> Delayed.return d1
+    | None, d2 -> Delayed.return d2
+    | _, _ -> Delayed.vanish () in
+    let+ h = ExpMap.sym_merge S.compose h1 h2 in
+    (h, d)
+
+    let is_fully_owned s = failwith "Implement here (is_fully_owned)"
   let is_empty s = failwith "Implement here (is_empty)"
   let instantiate = function
   | [] -> (ExpMap.empty, Some (Expr.ESet []))
   | _ -> failwith "Invalid arguments for instantiation"
 
-
   let substitution_in_place sub (h, d) =
     let open Delayed.Syntax in
     let mapper (idx, s) =
       let+ s' = S.substitution_in_place sub s in
-      let idx' = Subst.subst_in_expr sub idx ~partial:true in (idx', s') in
+      let idx' = Subst.subst_in_expr sub idx ~partial:true in
+      (idx', s') in
     let map_entries = ExpMap.bindings h in
     let* sub_entries = Delayed.all (List.map mapper map_entries) in
-    let merger acc (idx, s) =
-      let* acc = acc in
-      let+ matching = ExpMap.sym_find_opt idx acc in
-      match matching with
-      | Some (idx, s') -> ExpMap.add idx (S.compose s s') acc
-      | None -> ExpMap.add idx s acc in
-    let+ h' = List.fold_left merger (Delayed.return ExpMap.empty) sub_entries in
+    let+ h' = ExpMap.sym_compose S.compose sub_entries ExpMap.empty in
     (h', d)
 
   let lvars (h, d) =

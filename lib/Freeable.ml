@@ -78,7 +78,12 @@ module Make
       | FreedPred, SubState _ -> Delayed.return Freed (* Not sure... *)
       | FreedPred, Freed -> Delayed.vanish ()
 
-    let compose s1 s2 = failwith "Not implemented"
+    let compose s1 s2 =
+      let open Delayed.Syntax in
+      match s1, s2 with
+      | SubState s1, SubState s2 -> let+ s' = S.compose s1 s2 in SubState s'
+      (* | Freed, Freed -> Delayed.return Freed are there cases where we want this? *)
+      | _ -> Delayed.vanish ()
 
     let is_fully_owned = function
     | SubState s -> S.is_fully_owned s

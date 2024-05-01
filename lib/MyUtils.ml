@@ -59,6 +59,21 @@ module ExpMap = struct
     | Some (k, v) -> Ok (k, v)
     | None -> Error err
 
+  (** Symbolically composes a map with a list of entries, composing entries when they
+    are found to match. *)
+  let sym_compose (compose:'a -> 'a -> 'a Delayed.t) (l:(Expr.t * 'a) list) (m:'a t) : 'a t Delayed.t =
+    let open Delayed.Syntax in
+    let compose_binding m (k, v) =
+      let* m = m in
+      let* r = sym_find_opt k m in
+      match r with
+      | Some (k', v') ->
+        let+ v'' = compose v v' in add k' v'' m
+      | None -> Delayed.return (add k v m) in
+    List.fold_left compose_binding (Delayed.return m) l
+
+  let sym_merge compose m1 m2 = sym_compose compose (bindings m2) m1
+
   let make_pp pp_v =
     fun fmt m ->
       let pp_binding fmt (k, v) =
