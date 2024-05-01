@@ -33,7 +33,7 @@ let pred_from_str = function
 let pred_to_str = function
 | PointsTo -> "points_to"
 
-let init () = None
+let init (): t = None (* TODO: Should it be Val (Expr.int 0)? *)
 let clear (v:t) : t = None
 
 let execute_action action s args =
@@ -54,7 +54,9 @@ let consume core_pred s args =
 let produce core_pred s args =
   match core_pred, s, args with
   | PointsTo, None, [v] -> Delayed.return (Val v)
-  | PointsTo, Val _, _ -> Delayed.vanish ()
+  | PointsTo, Val _, _ ->
+    Logging.normal (fun m -> m "Warning Exc: vanishing due to dup resource";);
+    Delayed.vanish ()
   | PointsTo, _, _ -> failwith "Invalid PointsTo produce"
 
 (* val substitution_in_place : st -> t -> t Delayed.t *)
@@ -79,6 +81,11 @@ let is_fully_owned = function
 let is_empty = function
 | None -> true
 | Val _ -> false
+
+let instantiate = function
+| [] -> Val (Expr.int 0)
+| [v] -> Val v (* maybe we don't want two options *)
+| _ -> failwith "Invalid Excl instantiation"
 
 let lvars s = match s with
 | None -> Containers.SS.empty

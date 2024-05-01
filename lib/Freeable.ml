@@ -64,12 +64,10 @@ module Make
         (match r with
         | Ok (s', outs) -> Ok (SubState s', outs)
         | Error e -> Error (SubError e))
-      (* Is this a UseAfterFree or a programming error?
-         Since really if the predicate is freed it was fully owned,
-          so this shouldn't really occur... *)
       | SubPred _, Freed -> DR.error UseAfterFree
       | FreedPred, SubState _ -> DR.error UseAfterFree
       | FreedPred, Freed -> DR.ok (Freed, [])
+      (* /\ TODO: is Freed omnipotent? Or do we need a third state for "Empty"? *)
 
     let produce pred s args =
       let open Delayed.Syntax in
@@ -89,6 +87,8 @@ module Make
     let is_empty = function
     | SubState s -> S.is_empty s
     | Freed -> false
+
+    let instantiate v = SubState (S.instantiate v)
 
     let substitution_in_place sub s =
       let open Delayed.Syntax in

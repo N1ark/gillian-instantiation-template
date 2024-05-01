@@ -45,9 +45,13 @@ module Make
   [@@deriving yojson]
 
   let pp fmt ((h, d): t) =
-    Format.fprintf fmt "{ %a }, (%a)"
-      (ExpMap.make_pp S.pp) h
-      (pp_opt Expr.pp) d
+    Format.pp_open_vbox fmt 0;
+    Format.fprintf fmt "PMap: { %a }\n" (ExpMap.make_pp S.pp) h;
+    (match d with
+    | None -> Format.fprintf fmt "DomainSet: None\n"
+    | Some d -> Format.fprintf fmt "DomainSet: %a\n" Expr.pp d);
+    Format.pp_close_box fmt ()
+
 
   let show s = Format.asprintf "%a" pp s
 
@@ -60,6 +64,7 @@ module Make
   | NotAllocated of Expr.t
   | AlreadyAllocated of Expr.t
   | InvalidIndexValue of Expr.t
+  | MissingDomainSet
   | SubError of Expr.t * S.err_t
   [@@deriving show, yojson]
 
@@ -72,10 +77,14 @@ module Make
   | s -> Option.map (fun a -> SubAction a) (S.action_from_str s)
 
   type pred =
+  | DomainSet
   | SubPred of S.pred
-  let pred_from_str s = Option.map (fun p -> SubPred p) (S.pred_from_str s)
+  let pred_from_str = function
+    | "domainset" -> Some DomainSet
+    | s -> Option.map (fun p -> SubPred p) (S.pred_from_str s)
   let pred_to_str = function
   | SubPred p -> S.pred_to_str p
+  | DomainSet -> "domainset"
 
   let init (): t = (ExpMap.empty, None)
 
@@ -119,9 +128,9 @@ module Make
       | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
       | Error e -> Error (SubError (idx, e)))
     | Alloc, _ ->
-      let+* idx = match args, I.mode with
-      | [], `Static -> let+ idx = I.make_fresh () in Ok idx
-      | [idx], `Dynamic ->
+      let+* (idx, args) = match I.mode, args with
+      | `Static, args -> let+ idx = I.make_fresh () in Ok (idx, args)
+      | `Dynamic, idx :: args ->
         (* Check index is valid, and is not already allocated *)
         let* valid_idx = I.is_valid_index idx in
         if valid_idx = false
@@ -129,31 +138,37 @@ module Make
         else let+ found_val = ExpMap.sym_find_opt idx h in (
           match found_val with
           | Some _ -> Error (AlreadyAllocated idx)
-          | None -> Ok idx)
-      | _ -> failwith "Invalid number of arguments for allocation" in
-      let s = S.init () in
+          | None -> Ok (idx, args))
+      | `Dynamic, [] -> failwith "Missing argument for dynamically indexed map" in
+      let s = S.instantiate args in
       let h' = ExpMap.add idx s h in
       let d' = modify_domain (fun d -> idx :: d) d in
       Ok ((h', d'), [idx])
 
-  let consume pred ((h, d): t) (args: Expr.t list): (t * Expr.t list, err_t) DR.t =
+  let consume pred (h, d) ins =
     let open Delayed.Syntax in
     let open DR.Syntax in
-    match pred, args with
+    match pred, ins with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
-    | SubPred pred, idx :: args ->
+    | SubPred pred, idx :: ins ->
       let** (idx, s) = validate_index (h, d) idx in
-      let+ r = S.consume pred s args in (
+      let+ r = S.consume pred s ins in (
       match r with
       | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
       | Error e -> Error (SubError (idx, e)))
+    | DomainSet, [] -> (
+      match d with
+      | Some d -> DR.ok ((h, None), [d])
+      | None -> DR.error MissingDomainSet
+    )
+    | DomainSet, _ -> failwith "Invalid number of ins for domainset"
 
   let produce pred (h, d) args =
     let open Delayed.Syntax in
     match pred, args with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: args ->
-      let* r = validate_index (h, d) idx in
+      let* r = validate_index (h, d) idx in (
       match r with
       | Ok (idx, s) ->
         let+ s' = S.produce pred s args in
@@ -162,11 +177,24 @@ module Make
         let s = S.init () in
         let+ s' = S.produce pred s args in
         update_entry (h, d) idx s'
-      | Error _ -> Delayed.vanish ()
+      | Error _ ->
+        Logging.normal (fun m -> m "Warning PMap: vanishing due to invalid index";);
+        Delayed.vanish ())
+    | DomainSet, [d'] -> (
+      match d with
+      | Some _ ->
+        Logging.normal (fun m -> m "Warning PMap: vanishing due to duplicate domain set";);Delayed.vanish ()
+      | None -> Delayed.return (h, Some d') (* TODO: if%sat typeof set ?? *)
+    )
+    | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
 
   let compose s1 s2 = failwith "Implement here (compose)"
   let is_fully_owned s = failwith "Implement here (is_fully_owned)"
   let is_empty s = failwith "Implement here (is_empty)"
+  let instantiate = function
+  | [] -> (ExpMap.empty, Some (Expr.ESet []))
+  | _ -> failwith "Invalid arguments for instantiation"
+
 
   let substitution_in_place sub (h, d) =
     let open Delayed.Syntax in

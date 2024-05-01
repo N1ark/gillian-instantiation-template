@@ -65,7 +65,7 @@ module ExpMap = struct
         Format.fprintf fmt "%a -> %a" Expr.pp k pp_v v in
       Format.fprintf fmt
         "@[<hov 2>{%a}@]"
-        (Format.pp_print_list pp_binding)
+        (Format.pp_print_list ?pp_sep:(Some Format.pp_force_newline) pp_binding)
         (bindings m)
 
 end
@@ -82,3 +82,4 @@ let bind_vanish_on_err (x : ('a, 'e) result Delayed.t) (f : 'a Delayed.t -> 'b D
   | Error _ -> Delayed.vanish ()
 
 let ( let*? ) = bind_vanish_on_err
+

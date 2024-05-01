@@ -90,6 +90,7 @@ module Make
   let compose s1 s2 = failwith "Sum.compose not implemented"
   let is_fully_owned s = split_state S1.is_fully_owned S2.is_fully_owned s
   let is_empty s = split_state S1.is_empty S2.is_empty s
+  let instantiate v = S1 (S1.instantiate v) (* TODO: does it even make sense? forbid? *)
 
   let substitution_in_place st t =
     let open Delayed.Syntax in

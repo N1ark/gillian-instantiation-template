@@ -112,9 +112,25 @@ module Make
 
     let compose s1 s2 = failwith "Not implemented"
 
-    let is_fully_owned s = failwith "Implement here (is_fully_owned)"
+    let is_fully_owned = function
+    | (b, Some n) ->
+      ExpMap.fold (fun _ v acc -> acc && S.is_fully_owned v) b true
+    | (_, None) -> false
 
-    let is_empty s = false (* TODO *)
+    let is_empty s = false (* TODO: can a list ever be empty?? no length & all elems empty? *)
+
+    let instantiate = function
+    | [n] ->
+      let length = match n with
+      | Expr.Lit (Int n) -> Z.to_int n
+      | _ -> failwith "Invalid length for list instantiation" in
+      let rec aux acc i =
+        if i = length then acc
+        else aux (ExpMap.add (Expr.int i) (S.instantiate []) acc) (i + 1) in
+      let b = aux ExpMap.empty 0 in
+      (b, Some n)
+    | args -> failwith "Invalid arguments for list instantiation"
+
 
     let substitution_in_place sub (b, n) =
       let open Delayed.Syntax in

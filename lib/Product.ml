@@ -78,6 +78,7 @@ module Make
   let compose s1 s2 = failwith "Not implemented"
   let is_fully_owned (s1, s2) = S1.is_fully_owned s1 && S2.is_fully_owned s2
   let is_empty (s1, s2) = S1.is_empty s1 && S2.is_empty s2
+  let instantiate v = (S1.instantiate v, S2.instantiate v) (* Maybe forbid it? *)
 
   let substitution_in_place st (s1, s2) =
     let open Delayed.Syntax in
