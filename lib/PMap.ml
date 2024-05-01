@@ -6,13 +6,15 @@ module DR = Delayed_result
 
 open MyUtils
 
-(** Type for the domain of a PMap.
-    Allows configuring it to either have static or dynamic indexing:
-    - Static: indexes are created by the memory model on allocation
-    - Dynamic: indexes are given by the user on allocation
-    The user must provide the index on allocation in dynamic mode, and mustn't provide it in static mode.
-    is_valid_index must always be implemented, while make_fresh is only needed in static mode.
-     *)
+(**
+  Type for the domain of a PMap.
+  Allows configuring it to either have static or dynamic indexing:
+  - Static: indexes are created by the memory model on allocation (eg. the heap in C)
+  - Dynamic: indexes are given by the user on allocation (eg. objects in JS)
+
+  The user must provide the index on allocation in dynamic mode, and mustn't provide it in static mode.
+  is_valid_index must always be implemented, while make_fresh is only needed in static mode.
+*)
 module type PMapIndex = sig
   val mode : [`Static | `Dynamic]
   val is_valid_index : Expr.t -> bool Delayed.t
@@ -20,13 +22,16 @@ module type PMapIndex = sig
 end
 
 module LocationIndex : PMapIndex = struct
+  open Allocators.Basic ()
+
   let mode = `Static
   let is_valid_index = function
-  | Expr.ALoc _ | Expr.Lit (Loc _) -> Delayed.return true
+  | Expr.Lit (Int _)
+  | Expr.LVar _ -> Delayed.return true
   | _ -> Delayed.return false
   let make_fresh () =
-    let loc_name = ALoc.alloc () in
-    Delayed.return (Expr.ALoc loc_name)
+    let loc = alloc () in
+    Delayed.return (Expr.int loc)
 end
 
 module StringIndex : PMapIndex = struct

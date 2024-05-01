@@ -1,8 +1,8 @@
 (* Tests for PMap(LocationIndex, Exc) *)
 
 spec test_store(x, a)
-  [[ (x == #x) * (a == _$l_a) * <points_to>(_$l_a;#any) ]]
-  [[ (ret == null) * <points_to>(_$l_a;#x) ]]
+  [[ (x == #x) * (a == #a) * <points_to>(#a;#any) ]]
+  [[ (ret == null) * <points_to>(#a;#x) ]]
   normal
 proc test_store(x, a) {
   e := [store](a, x);
@@ -11,8 +11,8 @@ proc test_store(x, a) {
 };
 
 spec test_store_domainset(x, a)
-  [[ (x == #x) * (a == _$l_a) * <points_to>(_$l_a;#any) * <domainset>(;-{_$l_a}-) ]]
-  [[ (ret == null) * <domainset>(;-{_$l_a}-) * <points_to>(_$l_a;#x) ]]
+  [[ (x == #x) * (a == #a) * <points_to>(#a;#any) * <domainset>(;-{#a}-) ]]
+  [[ (ret == null) * <domainset>(;-{#a}-) * <points_to>(#a;#x) ]]
   normal
 proc test_store_domainset(x, a) {
   e := [store](a, x);
@@ -21,7 +21,7 @@ proc test_store_domainset(x, a) {
 };
 
 spec test_invalid_store(x, a)
-  [[ (x == #x) * (a == _$l_a) ]]
+  [[ (x == #x) * (a == #a) ]]
   [[ (ret == null) ]]
   normal
 proc test_invalid_store(x, a) {
@@ -31,8 +31,8 @@ proc test_invalid_store(x, a) {
 };
 
 spec test_load(a)
-  [[ (a == _$l_a) * (<points_to>(_$l_a;#any)) ]]
-  [[ (ret == {{ #any }}) * <points_to>(_$l_a;#any) ]]
+  [[ (a == #a) * <points_to>(#a;#any) ]]
+  [[ (ret == {{ #any }}) * <points_to>(#a;#any) ]]
   normal
 proc test_load(a) {
   x := [load](a);
@@ -41,7 +41,7 @@ proc test_load(a) {
 };
 
 spec test_invalid_load(a)
-  [[ (a == _$l_a) ]]
+  [[ (a == #a) ]]
   [[ (ret == {{ #any }}) ]]
   normal
 proc test_invalid_load(a) {
@@ -52,7 +52,7 @@ proc test_invalid_load(a) {
 
 spec test_alloc_no_domainset()
   [[ True ]]
-  [[ (ret == {{_$l_a}}) * <points_to>(_$l_a;0i) ]]
+  [[ (ret == {{#a}}) * <points_to>(#a;0i) ]]
   normal
 proc test_alloc_no_domainset() {
   e := [alloc]();
@@ -61,8 +61,8 @@ proc test_alloc_no_domainset() {
 };
 
 spec test_alloc_domainset()
-  [[ <domainset>(;-{_$l_a}-) ]]
-  [[ (ret == {{_$l_b}}) * <points_to>(_$l_b;0i) * <domainset>(;-{_$l_a, _$l_b}-) ]]
+  [[ <domainset>(;-{#a}-) ]]
+  [[ (ret == {{#b}}) * <points_to>(#b;0i) * <domainset>(;-{#a, #b}-) ]]
   normal
 proc test_alloc_domainset() {
   e := [alloc]();
