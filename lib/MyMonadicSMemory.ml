@@ -19,11 +19,12 @@ module type S = sig
   type pred
 
   val action_from_str : string -> action option
+  val action_to_str : action -> string (* only needed for debug *)
   val pred_from_str : string -> pred option
   val pred_to_str : pred -> string
 
   (* Initialisation *)
-  val init : unit -> t
+  val empty : unit -> t
   val clear : t -> t
 
   (* Execute action *)
@@ -54,6 +55,12 @@ module type S = sig
   val alocs : t -> Containers.SS.t
   val substitution_in_place : Subst.t -> t -> t Delayed.t
   val get_recovery_tactic : t -> err_t -> Values.t Recovery_tactic.t
+
+  (* Debug *)
+  (** Return all available (action * arguments * outputs) *)
+  val list_actions : unit -> (action * string list * string list) list
+  (** Return all available (predicates * ins * outs) *)
+  val list_preds : unit -> (pred * string list * string list) list
 
   (* Fixes *)
   val get_fixes :
@@ -97,6 +104,7 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
   type action_ret = (t * vt list, err_t) result
 
   (* Wrap action / consume / produce with a nice type *)
+  let init = empty
   let execute_action ~(action_name : string) (state : t) (args : vt list) :
       action_ret Delayed.t =
     match action_from_str action_name with

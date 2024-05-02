@@ -21,6 +21,16 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | "free" -> Some Free
     | str -> Option.map (fun a -> SubAction a) (S.action_from_str str)
 
+  let action_to_str = function
+    | Free -> "free"
+    | SubAction a -> S.action_to_str a
+
+  let list_actions () =
+    (Free, [], [])
+    :: List.map
+         (fun (a, arg, ret) -> (SubAction a, arg, ret))
+         (S.list_actions ())
+
   type pred = FreedPred | SubPred of S.pred
 
   let pred_from_str = function
@@ -31,7 +41,11 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | FreedPred -> "freed"
     | SubPred p -> S.pred_to_str p
 
-  let init () : t = SubState (S.init ())
+  let list_preds () =
+    (FreedPred, [], [])
+    :: List.map (fun (p, ins, outs) -> (SubPred p, ins, outs)) (S.list_preds ())
+
+  let empty () : t = SubState (S.empty ())
   let clear s = s (* TODO *)
 
   let execute_action action s (args : Values.t list) :
@@ -59,7 +73,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         | Error e -> Error (SubError e))
     | SubPred _, Freed -> DR.error UseAfterFree
     | FreedPred, SubState _ -> DR.error UseAfterFree
-    | FreedPred, Freed -> DR.ok (Freed, [])
+    | FreedPred, Freed -> DR.ok (empty (), [])
   (* /\ TODO: is Freed omnipotent? Or do we need a third state for "Empty"? *)
 
   let produce pred s args =
@@ -78,6 +92,8 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | SubState s1, SubState s2 ->
         let+ s' = S.compose s1 s2 in
         SubState s'
+    | Freed, SubState s2 when S.is_empty s2 -> Delayed.return Freed
+    | SubState s1, Freed when S.is_empty s1 -> Delayed.return Freed
     (* | Freed, Freed -> Delayed.return Freed are there cases where we want this? *)
     | _ -> Delayed.vanish ()
 

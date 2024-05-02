@@ -75,6 +75,18 @@ struct
     | "alloc" -> Some Alloc
     | s -> Option.map (fun a -> SubAction a) (S.action_from_str s)
 
+  let action_to_str = function
+    | SubAction a -> S.action_to_str a
+    | Alloc -> "alloc"
+
+  let list_actions () =
+    ( Alloc,
+      (if I.mode = `Dynamic then [ "address"; "...params" ] else [ "...params" ]),
+      [ "address" ] )
+    :: List.map
+         (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
+         (S.list_actions ())
+
   type pred = DomainSet | SubPred of S.pred
 
   let pred_from_str = function
@@ -85,7 +97,13 @@ struct
     | SubPred p -> S.pred_to_str p
     | DomainSet -> "domainset"
 
-  let init () : t = (ExpMap.empty, None)
+  let list_preds () =
+    (DomainSet, [], [ "domainset" ])
+    :: List.map
+         (fun (p, ins, outs) -> (SubPred p, "index" :: ins, outs))
+         (S.list_preds ())
+
+  let empty () : t = (ExpMap.empty, None)
   let clear s = s
 
   let validate_index ((h, d) : t) idx =
@@ -172,7 +190,7 @@ struct
             let+ s' = S.produce pred s args in
             update_entry (h, d) idx s'
         | Error (MissingCell idx) ->
-            let s = S.init () in
+            let s = S.empty () in
             let+ s' = S.produce pred s args in
             update_entry (h, d) idx s'
         | Error _ ->

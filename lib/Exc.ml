@@ -16,6 +16,12 @@ let action_from_str = function
   | "store" -> Some Store
   | _ -> None
 
+let action_to_str = function
+  | Load -> "load"
+  | Store -> "store"
+
+let list_actions () = [ (Load, [], [ "value" ]); (Store, [ "value" ], []) ]
+
 let pred_from_str = function
   | "points_to" -> Some PointsTo
   | _ -> None
@@ -23,7 +29,8 @@ let pred_from_str = function
 let pred_to_str = function
   | PointsTo -> "points_to"
 
-let init () : t = None (* TODO: Should it be Val (Expr.int 0)? *)
+let list_preds () = [ (PointsTo, [], [ "value" ]) ]
+let empty () : t = None (* TODO: Should it be Val (Expr.int 0)? *)
 let clear (v : t) : t = None
 
 let execute_action action s args =

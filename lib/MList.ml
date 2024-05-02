@@ -27,6 +27,14 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let action_from_str str =
     Option.map (fun a -> SubAction a) (S.action_from_str str)
 
+  let action_to_str = function
+    | SubAction a -> S.action_to_str a
+
+  let list_actions () =
+    List.map
+      (fun (a, args, ret) -> (SubAction a, "offset" :: args, ret))
+      (S.list_actions ())
+
   type pred = Length | SubPred of S.pred
 
   let pred_from_str = function
@@ -37,7 +45,13 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | Length -> "length"
     | SubPred p -> S.pred_to_str p
 
-  let init () : t = (ExpMap.empty, None)
+  let list_preds () =
+    (Length, [], [ "length" ])
+    :: List.map
+         (fun (p, args, ret) -> (SubPred p, "offset" :: args, ret))
+         (S.list_preds ())
+
+  let empty () : t = (ExpMap.empty, None)
   let clear s = s (* TODO *)
 
   let validate_index (b, n) idx =
@@ -91,7 +105,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     match (pred, args) with
     | SubPred p, idx :: args ->
         let*? _ = validate_index (b, n) idx in
-        let* idx, s = ExpMap.sym_find_default idx b ~default:S.init in
+        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
         let+ s' = S.produce p s args in
         (ExpMap.add idx s' b, n)
     | SubPred _, [] -> failwith "Missing index for sub-predicate produce"

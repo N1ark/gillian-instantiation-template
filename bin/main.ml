@@ -1,8 +1,17 @@
 open Gillian
 open Instantiation
 
-module MyMem = PMap.Make (PMap.LocationIndex) (Exc)
+(* Memory model definition *)
+module MyMem = PMap.Make (PMap.StringIndex) (Exc)
+
+(* Debug *)
+module Debug = Debug.Make (MyMem)
+let () = Debug.print_info ()
+
+(* Convert custom memory model -> Gillian memory model *)
 module PatchedMem = MyMonadicSMemory.Make (MyMem)
+
+(* Gillian Instantiation *)
 module SMemory = Gillian.Monadic.MonadicSMemory.Lift (PatchedMem)
 
 module Lifter (Verifier : Gillian.Abstraction.Verifier.S with type annot = Gil_syntax.Annot.Basic.t) =
