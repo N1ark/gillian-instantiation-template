@@ -63,11 +63,6 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         else DR.ok ()
     | None -> DR.ok ()
 
-  let state_at ((b, n) : t) idx =
-    let open DR.Syntax in
-    let** () = validate_index (b, n) idx in
-    ExpMap.sym_find_res idx b ~err:(MissingCell idx)
-
   let execute_action action ((b, n) : t) (args : Values.t list) :
       (t * Values.t list, err_t) DR.t =
     let open DR.Syntax in

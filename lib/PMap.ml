@@ -5,6 +5,9 @@ open Gil_syntax
 module DR = Delayed_result
 open MyUtils
 
+type index_mode = | Static | Dynamic
+
+
 (**
   Type for the domain of a PMap.
   Allows configuring it to either have static or dynamic indexing:
@@ -15,15 +18,20 @@ open MyUtils
   is_valid_index must always be implemented, while make_fresh is only needed in static mode.
 *)
 module type PMapIndex = sig
-  val mode : [ `Static | `Dynamic ]
+
+  val mode : index_mode
+  (** If the given expression is a valid index for the map *)
   val is_valid_index : Expr.t -> bool Delayed.t
+  (** Creates a new address, for allocating new state. Only used in static mode *)
   val make_fresh : unit -> Expr.t Delayed.t
+  (** The arguments used when instantiating new state. Only used in dynamic mode *)
+  val default_instantiation : Expr.t list
 end
 
 module LocationIndex : PMapIndex = struct
   open Allocators.Basic ()
 
-  let mode = `Static
+  let mode = Static
 
   let is_valid_index = function
     | Expr.Lit (Int _) | Expr.LVar _ -> Delayed.return true
@@ -32,16 +40,20 @@ module LocationIndex : PMapIndex = struct
   let make_fresh () =
     let loc = alloc () in
     Delayed.return (Expr.int loc)
+
+  let default_instantiation = []
 end
 
 module StringIndex : PMapIndex = struct
-  let mode = `Dynamic
+  let mode = Dynamic
 
   let is_valid_index = function
     | Expr.Lit (String _) -> Delayed.return true
     | _ -> Delayed.return false
 
   let make_fresh () = failwith "Not implemented (StringIndex.make_fresh)"
+
+  let default_instantiation = []
 end
 
 module Make (I : PMapIndex) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S =
@@ -66,6 +78,7 @@ struct
     | AlreadyAllocated of Expr.t
     | InvalidIndexValue of Expr.t
     | MissingDomainSet
+    | AllocDisallowedInDynamic
     | SubError of Expr.t * S.err_t
   [@@deriving show, yojson]
 
@@ -80,12 +93,10 @@ struct
     | Alloc -> "alloc"
 
   let list_actions () =
-    ( Alloc,
-      (if I.mode = `Dynamic then [ "address"; "...params" ] else [ "...params" ]),
-      [ "address" ] )
-    :: List.map
-         (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
-         (S.list_actions ())
+    (match I.mode with Static -> [ (Alloc, [ "params" ], [ "address" ]) ] | Dynamic -> [])
+    @ List.map
+        (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
+        (S.list_actions ())
 
   type pred = DomainSet | SubPred of S.pred
 
@@ -106,6 +117,12 @@ struct
   let empty () : t = (ExpMap.empty, None)
   let clear s = s
 
+  let modify_domain f d =
+    match d with
+    | None -> d
+    | Some (Expr.ESet d) -> Some (Expr.ESet (f d))
+    | Some _ -> failwith "Invalid index set"
+
   let validate_index ((h, d) : t) idx =
     let open Delayed.Syntax in
     let* valid_idx = I.is_valid_index idx in
@@ -119,11 +136,6 @@ struct
           if%sat Formula.SetMem (idx, d) then DR.error (NotAllocated idx)
           else DR.error (MissingCell idx)
 
-  let modify_domain f d =
-    match d with
-    | None -> d
-    | Some (Expr.ESet d) -> Some (Expr.ESet (f d))
-    | Some _ -> failwith "Invalid index set"
 
   let update_entry (h, d) idx s =
     if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d)
@@ -134,33 +146,28 @@ struct
     match (action, args) with
     | SubAction action, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args -> (
-        let** idx, s = validate_index (h, d) idx in
+        let* r = validate_index (h, d) idx in
+        let** (h, d), idx, s = match r, I.mode with
+          | Ok (idx, s), _ -> DR.ok ((h, d), idx, s)
+          (** In Dynamic mode, missing cells are instantiated to a default value *)
+          | Error (MissingCell idx), Dynamic ->
+            let s = S.instantiate I.default_instantiation in
+            let h' = ExpMap.add idx s h in
+            let d' = modify_domain (fun d -> idx :: d) d in
+            DR.ok ((h', d'), idx, s)
+          | Error e, _ -> DR.error e in
         let+ r = S.execute_action action s args in
         match r with
         | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
         | Error e -> Error (SubError (idx, e)))
-    | Alloc, _ ->
-        let+* idx, args =
-          match (I.mode, args) with
-          | `Static, args ->
-              let+ idx = I.make_fresh () in
-              Ok (idx, args)
-          | `Dynamic, idx :: args -> (
-              (* Check index is valid, and is not already allocated *)
-              let* valid_idx = I.is_valid_index idx in
-              if valid_idx = false then DR.error (InvalidIndexValue idx)
-              else
-                let+ found_val = ExpMap.sym_find_opt idx h in
-                match found_val with
-                | Some _ -> Error (AlreadyAllocated idx)
-                | None -> Ok (idx, args))
-          | `Dynamic, [] ->
-              failwith "Missing argument for dynamically indexed map"
-        in
-        let s = S.instantiate args in
-        let h' = ExpMap.add idx s h in
-        let d' = modify_domain (fun d -> idx :: d) d in
-        Ok ((h', d'), [ idx ])
+    | Alloc, args ->
+        if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
+        else
+          let+ idx = I.make_fresh () in
+          let s = S.instantiate args in
+          let h' = ExpMap.add idx s h in
+          let d' = modify_domain (fun d -> idx :: d) d in
+          Ok ((h', d'), [ idx ])
 
   let consume pred (h, d) ins =
     let open Delayed.Syntax in
@@ -168,7 +175,7 @@ struct
     match (pred, ins) with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
-        let** idx, s = validate_index (h, d) idx in
+        let** idx, s = validate_index (h, d) idx  in
         let+ r = S.consume pred s ins in
         match r with
         | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)

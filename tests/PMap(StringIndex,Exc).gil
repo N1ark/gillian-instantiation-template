@@ -20,8 +20,28 @@ proc test_store_domainset(x) {
   return
 };
 
-spec test_invalid_store(x)
+spec test_store_missing(x)
   [[ (x == #x) ]]
+  [[ (ret == null) * <points_to>("field";#x) ]]
+  normal
+proc test_store_missing(x) {
+  e := [store]("field", x);
+  ret := null;
+  return
+};
+
+spec test_store_missing_with_domainset(x)
+  [[ (x == #x) * <domainset>(;-{"other"}-) ]]
+  [[ (ret == null) * <points_to>("field";#x) * <domainset>(;-{"other", "field"}-) ]]
+  normal
+proc test_store_missing_with_domainset(x) {
+  e := [store]("field", x);
+  ret := null;
+  return
+};
+
+spec test_invalid_store(x)
+  [[ (x == #x) * <domainset>(;-{"field"}-) ]]
   [[ (ret == null) ]]
   normal
 proc test_invalid_store(x) {
@@ -40,9 +60,30 @@ proc test_load() {
   return
 };
 
-spec test_invalid_load()
+
+spec test_load_when_missing_with_domainset()
+  [[ <domainset>(;-{"other"}-) ]]
+  [[ (ret == {{ 0i }}) * <points_to>("field";0i) * <domainset>(;-{"other", "field"}-) ]]
+  normal
+proc test_load_when_missing_with_domainset() {
+  x := [load]("field");
+  ret := x;
+  return
+};
+
+spec test_load_when_missing()
   [[ True ]]
-  [[ (ret == {{ #any }}) ]]
+  [[ (ret == {{ 0i }}) * <points_to>("field";0i) ]]
+  normal
+proc test_load_when_missing() {
+  x := [load]("field");
+  ret := x;
+  return
+};
+
+spec test_invalid_load()
+  [[ <domainset>(;-{"field"}-) ]]
+  [[ (ret == {{ 0i }}) * <domainset>(;-{"field"}-) ]]
   normal
 proc test_invalid_load() {
   x := [load]("field");
@@ -50,33 +91,12 @@ proc test_invalid_load() {
   return
 };
 
-spec test_alloc_no_domainset()
-  [[ True ]]
-  [[ (ret == {{"field"}}) * <points_to>("field";0i) ]]
+spec test_invalid_alloc()
+  [[ <domainset>(;-{"other"}-) ]]
+  [[ (ret == {{}}) * <domainset>(;-{"other"}-) ]]
   normal
-proc test_alloc_no_domainset() {
+proc test_invalid_alloc() {
   e := [alloc]("field");
   ret := e;
   return
 };
-
-spec test_alloc_domainset()
-  [[ <domainset>(;-{"other"}-) ]]
-  [[ (ret == {{"field"}}) * <points_to>("field";0i) * <domainset>(;-{"other", "field"}-) ]]
-  normal
-proc test_alloc_domainset() {
-  e := [alloc]("field");
-  ret := e;
-  return
-};
-
-spec test_invalid_alloc_wrong_index()
-  [[ <domainset>(;-{"other"}-) ]]
-  [[ (ret == {{11i}}) * <domainset>(;-{"other"}-) ]]
-  normal
-proc test_invalid_alloc_wrong_index() {
-  e := [alloc](11i);
-  ret := e;
-  return
-};
-
