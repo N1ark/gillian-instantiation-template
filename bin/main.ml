@@ -2,7 +2,7 @@ open Gillian
 open Instantiation
 
 (* Memory model definition *)
-module MyMem = PMap.Make (PMap.StringIndex) (Exc)
+module MyMem = PMap.Make (PMap.LocationIndex) (Freeable.Make(Exc))
 
 (* Debug *)
 module Debug = Debug.Make (MyMem)

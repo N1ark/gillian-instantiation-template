@@ -43,12 +43,14 @@ let execute_action action s args =
   | Store, _, _ -> failwith "Invalid Store action"
 
 let consume core_pred s args =
+  Logging.normal (fun m -> m "Exc consuming : %s / %s / %a" (show s) (pred_to_str core_pred) (Fmt.list Expr.pp) args);
   match (core_pred, s, args) with
   | PointsTo, Some v, [] -> DR.ok (None, [ v ])
   | PointsTo, None, _ -> DR.error MissingState
   | PointsTo, _, _ -> failwith "Invalid PointsTo consume"
 
 let produce core_pred s args =
+  Logging.normal (fun m -> m "Exc Producing : %s / %s / %a" (show s) (pred_to_str core_pred) (Fmt.list Expr.pp) args);
   match (core_pred, s, args) with
   | PointsTo, None, [ v ] -> Delayed.return (Some v)
   | PointsTo, Some _, _ ->

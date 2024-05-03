@@ -138,7 +138,9 @@ struct
 
 
   let update_entry (h, d) idx s =
-    if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d)
+    (* This optimisation prevents unsoundness from happening \/ *)
+    (* if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d) *)
+    ExpMap.add idx s h, d
 
   let execute_action action ((h, d) : t) args =
     let open Delayed.Syntax in
@@ -170,6 +172,7 @@ struct
           Ok ((h', d'), [ idx ])
 
   let consume pred (h, d) ins =
+    Logging.normal (fun m -> m "PMap Consuming : %s / %s / %a" (show (h, d)) (pred_to_str pred) (Fmt.list Expr.pp) ins);
     let open Delayed.Syntax in
     let open DR.Syntax in
     match (pred, ins) with
@@ -187,6 +190,7 @@ struct
     | DomainSet, _ -> failwith "Invalid number of ins for domainset"
 
   let produce pred (h, d) args =
+    Logging.normal (fun m -> m "PMap Producing : %s / %s / %a" (show (h, d)) (pred_to_str pred) (Fmt.list Expr.pp) args);
     let open Delayed.Syntax in
     match (pred, args) with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
@@ -264,6 +268,7 @@ struct
   let assertions (h, d) =
     ExpMap.fold (fun k s acc ->
       (List.map (fun (p, i, o) -> (SubPred p, k :: i, o)))
+      (S.assertions s) @ acc) h []
 
   let get_recovery_tactic (h, d) = function
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e

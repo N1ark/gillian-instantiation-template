@@ -5,7 +5,7 @@ open Gil_syntax
 module DR = Delayed_result
 
 module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
-  type t = Freed | SubState of S.t [@@deriving yojson, show]
+  type t = Empty | Freed | SubState of S.t [@@deriving yojson, show]
   type c_fix_t = SubFix of S.c_fix_t [@@deriving show]
 
   type err_t =
@@ -45,7 +45,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     (FreedPred, [], [])
     :: List.map (fun (p, ins, outs) -> (SubPred p, ins, outs)) (S.list_preds ())
 
-  let empty () : t = SubState (S.empty ())
+  let empty () : t = Empty
   let clear s = s (* TODO *)
 
   let execute_action action s (args : Values.t list) :
@@ -58,12 +58,15 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         | Ok (s', outs) -> Ok (SubState s', outs)
         | Error e -> Error (SubError e))
     | SubAction _, Freed -> DR.error UseAfterFree
+    | SubAction _, Empty -> DR.error MissingResource
     | Free, SubState s ->
         if S.is_fully_owned s then DR.ok (Freed, [])
         else DR.error MissingResource
     | Free, Freed -> DR.error DoubleFree
+    | Free, Empty -> DR.ok (Freed, [])
 
   let consume pred s ins =
+    Logging.normal (fun m -> m "Freeable Consuming : %s / %s / %a" (show s) (pred_to_str pred) (Fmt.list Expr.pp) ins);
     let open Delayed.Syntax in
     match (pred, s) with
     | SubPred p, SubState s -> (
@@ -72,19 +75,26 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         | Ok (s', outs) -> Ok (SubState s', outs)
         | Error e -> Error (SubError e))
     | SubPred _, Freed -> DR.error UseAfterFree
+    | SubPred _, Empty -> DR.error MissingResource
     | FreedPred, SubState _ -> DR.error UseAfterFree
     | FreedPred, Freed -> DR.ok (empty (), [])
-  (* /\ TODO: is Freed omnipotent? Or do we need a third state for "Empty"? *)
+    | FreedPred, Empty -> DR.error MissingResource
 
   let produce pred s args =
+    Logging.normal (fun m -> m "Freeable Producing : %s / %s / %a" (show s) (pred_to_str pred) (Fmt.list Expr.pp) args);
     let open Delayed.Syntax in
     match (pred, s) with
     | SubPred p, SubState s ->
         let+ s' = S.produce p s args in
         SubState s'
     | SubPred _, Freed -> Delayed.vanish ()
-    | FreedPred, SubState _ -> Delayed.return Freed (* Not sure... *)
+    | SubPred p, Empty ->
+      let s = S.empty () in
+      let+ s' = S.produce p s args in
+      SubState s'
+    | FreedPred, SubState _ -> Delayed.vanish () (* Not sure... *)
     | FreedPred, Freed -> Delayed.vanish ()
+    | FreedPred, Empty -> Delayed.return Freed
 
   let compose s1 s2 =
     let open Delayed.Syntax in
@@ -92,18 +102,22 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | SubState s1, SubState s2 ->
         let+ s' = S.compose s1 s2 in
         SubState s'
-    | Freed, SubState s2 when S.is_empty s2 -> Delayed.return Freed
-    | SubState s1, Freed when S.is_empty s1 -> Delayed.return Freed
+    | Empty, s2 -> Delayed.return s2
+    | s1, Empty -> Delayed.return s1
+    (* | Freed, SubState s2 when S.is_empty s2 -> Delayed.return Freed
+    | SubState s1, Freed when S.is_empty s1 -> Delayed.return Freed *)
     (* | Freed, Freed -> Delayed.return Freed are there cases where we want this? *)
     | _ -> Delayed.vanish ()
 
   let is_fully_owned = function
     | SubState s -> S.is_fully_owned s
     | Freed -> true
+    | Empty -> true
 
   let is_empty = function
     | SubState s -> S.is_empty s
     | Freed -> false
+    | Empty -> true
 
   let instantiate v = SubState (S.instantiate v)
 
@@ -113,20 +127,22 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | SubState s ->
         let+ s' = S.substitution_in_place sub s in
         SubState s'
-    | Freed -> Delayed.return Freed
+    | Freed | Empty -> Delayed.return s
 
   let lvars = function
     | SubState s -> S.lvars s
-    | Freed -> Containers.SS.empty
+    | Freed | Empty -> Containers.SS.empty
 
   let alocs = function
     | SubState s -> S.alocs s
-    | Freed -> Containers.SS.empty
+    | Freed
+    | Empty ->  Containers.SS.empty
 
   let assertions = function
     | SubState s ->
         List.map (fun (p, i, o) -> (SubPred p, i, o)) (S.assertions s)
     | Freed -> [ (FreedPred, [], []) ]
+    | Empty -> []
 
   let get_recovery_tactic s e =
     match (s, e) with
@@ -155,5 +171,5 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         match r with
         | Ok s' -> Ok (SubState s')
         | Error e -> Error (SubError e))
-    | Freed, SubFix _ -> failwith "Cannot apply subfix to freed state"
+    | _, SubFix _ -> failwith "Wrong fix attempt"
 end
