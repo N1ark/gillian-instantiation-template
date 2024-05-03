@@ -262,8 +262,8 @@ struct
     | Some d -> union alocs_map (Expr.alocs d)
 
   let assertions (h, d) =
-    let subasrts = ExpMap.fold (fun _ s acc -> S.assertions s @ acc) h [] in
-    List.map (fun (a, i, o) -> (SubPred a, i, o)) subasrts
+    ExpMap.fold (fun k s acc ->
+      (List.map (fun (p, i, o) -> (SubPred p, k :: i, o)))
 
   let get_recovery_tactic (h, d) = function
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
