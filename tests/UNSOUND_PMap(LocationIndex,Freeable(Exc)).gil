@@ -12,7 +12,7 @@ proc free_cell(x) {
 
 spec test_unsoundness()
   [[ True ]]
-  [[ ret == "definitely not this" ]]
+  [[ False ]]
   normal
 proc test_unsoundness() {
   x := [alloc]();
