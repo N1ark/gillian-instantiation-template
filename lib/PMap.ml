@@ -5,8 +5,7 @@ open Gil_syntax
 module DR = Delayed_result
 open MyUtils
 
-type index_mode = | Static | Dynamic
-
+type index_mode = Static | Dynamic
 
 (**
   Type for the domain of a PMap.
@@ -18,12 +17,14 @@ type index_mode = | Static | Dynamic
   is_valid_index must always be implemented, while make_fresh is only needed in static mode.
 *)
 module type PMapIndex = sig
-
   val mode : index_mode
+
   (** If the given expression is a valid index for the map *)
   val is_valid_index : Expr.t -> bool Delayed.t
+
   (** Creates a new address, for allocating new state. Only used in static mode *)
   val make_fresh : unit -> Expr.t Delayed.t
+
   (** The arguments used when instantiating new state. Only used in dynamic mode *)
   val default_instantiation : Expr.t list
 end
@@ -52,7 +53,6 @@ module StringIndex : PMapIndex = struct
     | _ -> Delayed.return false
 
   let make_fresh () = failwith "Not implemented (StringIndex.make_fresh)"
-
   let default_instantiation = []
 end
 
@@ -93,7 +93,9 @@ struct
     | Alloc -> "alloc"
 
   let list_actions () =
-    (match I.mode with Static -> [ (Alloc, [ "params" ], [ "address" ]) ] | Dynamic -> [])
+    (match I.mode with
+    | Static -> [ (Alloc, [ "params" ], [ "address" ]) ]
+    | Dynamic -> [])
     @ List.map
         (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
         (S.list_actions ())
@@ -123,98 +125,108 @@ struct
     | Some (Expr.ESet d) -> Some (Expr.ESet (f d))
     | Some _ -> failwith "Invalid index set"
 
-  let validate_index ((h, d) : t) idx =
+  let validate_index (s : t option) idx =
     let open Delayed.Syntax in
     let* valid_idx = I.is_valid_index idx in
     if valid_idx = false then DR.error (InvalidIndexValue idx)
     else
-      let* match_val = ExpMap.sym_find_opt idx h in
-      match (match_val, d) with
-      | Some (idx, v), _ -> DR.ok (idx, v)
-      | None, None -> DR.error (MissingCell idx)
-      | None, Some d ->
-          if%sat Formula.SetMem (idx, d) then DR.error (NotAllocated idx)
-          else DR.error (MissingCell idx)
+      match s with
+      | None -> DR.error (MissingCell idx)
+      | Some (h, d) -> (
+          let* match_val = ExpMap.sym_find_opt idx h in
+          match (match_val, d) with
+          | Some (idx, v), _ -> DR.ok (idx, v)
+          | None, None -> DR.error (MissingCell idx)
+          | None, Some d ->
+              if%sat Formula.SetMem (idx, d) then DR.error (NotAllocated idx)
+              else DR.error (MissingCell idx))
 
-
-  let update_entry (h, d) idx s =
+  (** Add/Remove an element from the optional map, returning an optional map
+      (returns None if the map is empty) *)
+  let update_entry (s : t option) (idx : Expr.t) (sub : S.t option) : t option =
     (* This optimisation prevents unsoundness from happening \/ *)
     (* if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d) *)
-    ExpMap.add idx s h, d
+    match (s, sub) with
+    | None, None -> None
+    | None, Some s -> Some (ExpMap.singleton idx s, None)
+    | Some (h, d), None ->
+        let h' = ExpMap.remove idx h in
+        if ExpMap.is_empty h' && Option.is_none d then None else Some (h', d)
+    | Some (h, d), Some s -> Some (ExpMap.add idx s h, d)
 
-  let execute_action action ((h, d) : t) args =
+  let execute_action action (s : t option) args :
+      (t option * Expr.t list, err_t) result Delayed.t =
     let open Delayed.Syntax in
     let open DR.Syntax in
     match (action, args) with
     | SubAction action, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args -> (
-        let* r = validate_index (h, d) idx in
-        let** (h, d), idx, s = match r, I.mode with
-          | Ok (idx, s), _ -> DR.ok ((h, d), idx, s)
-          (** In Dynamic mode, missing cells are instantiated to a default value *)
+        let* r = validate_index s idx in
+        let** s, idx, sub =
+          match (r, I.mode) with
+          | Ok (idx, sub), _ -> DR.ok (s, idx, sub)
+          (* In Dynamic mode, missing cells are instantiated to a default value *)
           | Error (MissingCell idx), Dynamic ->
-            let s = S.instantiate I.default_instantiation in
-            let h' = ExpMap.add idx s h in
-            let d' = modify_domain (fun d -> idx :: d) d in
-            DR.ok ((h', d'), idx, s)
-          | Error e, _ -> DR.error e in
-        let+ r = S.execute_action action s args in
+              let h, d = Option.value s ~default:(ExpMap.empty, None) in
+              let sub = S.instantiate I.default_instantiation in
+              let d' = modify_domain (fun d -> idx :: d) d in
+              DR.ok (Some (h, d'), idx, sub)
+          | Error e, _ -> DR.error e
+        in
+        let+ r = S.execute_action action (Some sub) args in
         match r with
-        | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
+        | Ok (sub', v) -> Ok (update_entry s idx sub', v)
         | Error e -> Error (SubError (idx, e)))
     | Alloc, args ->
         if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
         else
+          let h, d = Option.value s ~default:(ExpMap.empty, None) in
           let+ idx = I.make_fresh () in
-          let s = S.instantiate args in
-          let h' = ExpMap.add idx s h in
+          let sub = S.instantiate args in
+          let h' = ExpMap.add idx sub h in
           let d' = modify_domain (fun d -> idx :: d) d in
-          Ok ((h', d'), [ idx ])
+          Ok (Some (h', d'), [ idx ])
 
-  let consume pred (h, d) ins =
-    Logging.normal (fun m -> m "PMap Consuming : %s / %s / %a" (show (h, d)) (pred_to_str pred) (Fmt.list Expr.pp) ins);
+  let consume pred s ins : (t option * Expr.t list, err_t) result Delayed.t =
     let open Delayed.Syntax in
     let open DR.Syntax in
     match (pred, ins) with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
-        let** idx, s = validate_index (h, d) idx  in
-        let+ r = S.consume pred s ins in
+        let** idx, sub = validate_index (Some s) idx in
+        let+ r = S.consume pred sub ins in
         match r with
-        | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
+        | Ok (sub', v) -> Ok (update_entry (Some s) idx sub', v)
         | Error e -> Error (SubError (idx, e)))
     | DomainSet, [] -> (
-        match d with
-        | Some d -> DR.ok ((h, None), [ d ])
-        | None -> DR.error MissingDomainSet)
+        match s with
+        | h, Some d ->
+            (* Become empty if nothing is left *)
+            let s' = if ExpMap.is_empty h then None else Some (h, None) in
+            DR.ok (s', [ d ])
+        | h, None -> DR.error MissingDomainSet)
     | DomainSet, _ -> failwith "Invalid number of ins for domainset"
 
-  let produce pred (h, d) args =
-    Logging.normal (fun m -> m "PMap Producing : %s / %s / %a" (show (h, d)) (pred_to_str pred) (Fmt.list Expr.pp) args);
+  let produce pred (s : t option) args : t Delayed.t =
     let open Delayed.Syntax in
     match (pred, args) with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
-    | SubPred pred, idx :: args -> (
-        let* r = validate_index (h, d) idx in
-        match r with
-        | Ok (idx, s) ->
-            let+ s' = S.produce pred s args in
-            update_entry (h, d) idx s'
-        | Error (MissingCell idx) ->
-            let s = S.empty () in
-            let+ s' = S.produce pred s args in
-            update_entry (h, d) idx s'
-        | Error _ ->
-            Logging.normal (fun m ->
-                m "Warning PMap: vanishing due to invalid index");
-            Delayed.vanish ())
+    | SubPred pred, idx :: args ->
+        let* r = validate_index s idx in
+        let* idx, sub =
+          match r with
+          | Ok (idx, sub) -> Delayed.return (idx, Some sub)
+          | Error (MissingCell idx) -> Delayed.return (idx, None)
+          | Error _ -> Delayed.vanish ()
+        in
+        let+ sub' = S.produce pred sub args in
+        update_entry s idx (Some sub') |> Option.get
     | DomainSet, [ d' ] -> (
-        match d with
-        | Some _ ->
-            Logging.normal (fun m ->
-                m "Warning PMap: vanishing due to duplicate domain set");
-            Delayed.vanish ()
-        | None -> Delayed.return (h, Some d') (* TODO: if%sat typeof set ?? *))
+        match s with
+        | Some (_, Some d) -> Delayed.vanish ()
+        (* TODO: if%sat typeof set ?? *)
+        | None -> Delayed.return (ExpMap.empty, Some d')
+        | Some (h, None) -> Delayed.return (h, Some d'))
     | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
 
   let compose (h1, d1) (h2, d2) =
@@ -266,9 +278,11 @@ struct
     | Some d -> union alocs_map (Expr.alocs d)
 
   let assertions (h, d) =
-    ExpMap.fold (fun k s acc ->
-      (List.map (fun (p, i, o) -> (SubPred p, k :: i, o)))
-      (S.assertions s) @ acc) h []
+    ExpMap.fold
+      (fun k s acc ->
+        (List.map (fun (p, i, o) -> (SubPred p, k :: i, o))) (S.assertions s)
+        @ acc)
+      h []
 
   let get_recovery_tactic (h, d) = function
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e

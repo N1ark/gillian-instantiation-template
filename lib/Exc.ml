@@ -5,7 +5,7 @@ open Gil_syntax
 module DR = Delayed_result
 module Recovery_tactic = Gillian.General.Recovery_tactic
 
-type t = Expr.t option [@@deriving show, yojson]
+type t = Expr.t [@@deriving show, yojson]
 type c_fix_t = FAddState of Values.t [@@deriving show]
 type err_t = MissingState [@@deriving show, yojson]
 type action = Load | Store
@@ -30,8 +30,6 @@ let pred_to_str = function
   | PointsTo -> "points_to"
 
 let list_preds () = [ (PointsTo, [], [ "value" ]) ]
-let empty () : t = None (* TODO: Should it be Val (Expr.int 0)? *)
-let clear (v : t) : t = None
 
 let execute_action action s args =
   match (action, s, args) with
@@ -43,59 +41,33 @@ let execute_action action s args =
   | Store, _, _ -> failwith "Invalid Store action"
 
 let consume core_pred s args =
-  Logging.normal (fun m -> m "Exc consuming : %s / %s / %a" (show s) (pred_to_str core_pred) (Fmt.list Expr.pp) args);
-  match (core_pred, s, args) with
-  | PointsTo, Some v, [] -> DR.ok (None, [ v ])
-  | PointsTo, None, _ -> DR.error MissingState
-  | PointsTo, _, _ -> failwith "Invalid PointsTo consume"
+  match (core_pred, args) with
+  | PointsTo, [] -> DR.ok (None, [ s ])
+  | PointsTo, _ -> failwith "Invalid PointsTo consume"
 
 let produce core_pred s args =
-  Logging.normal (fun m -> m "Exc Producing : %s / %s / %a" (show s) (pred_to_str core_pred) (Fmt.list Expr.pp) args);
   match (core_pred, s, args) with
-  | PointsTo, None, [ v ] -> Delayed.return (Some v)
-  | PointsTo, Some _, _ ->
-      Logging.normal (fun m -> m "Warning Exc: vanishing due to dup resource");
-      Delayed.vanish ()
+  | PointsTo, None, [ v ] -> Delayed.return v
+  | PointsTo, Some _, _ -> Delayed.vanish ()
   | PointsTo, _, _ -> failwith "Invalid PointsTo produce"
 
-let substitution_in_place subst (heap : t) =
-  let open Delayed.Syntax in
-  match heap with
-  | None -> Delayed.return None
-  | Some v ->
-      let v' = Subst.subst_in_expr ~partial:true subst v in
-      Delayed.return (Some v')
+let substitution_in_place subst s =
+  Delayed.return (Subst.subst_in_expr ~partial:true subst s)
 
-let compose s1 s2 =
-  match (s1, s2) with
-  | None, _ -> Delayed.return s2
-  | _, None -> Delayed.return s1
-  | _ -> Delayed.vanish ()
+(** Composition is never defined for Exc! Lifted state model handles "empty" *)
+let compose s1 s2 = Delayed.vanish ()
 
-let is_fully_owned = function
-  | None -> false
-  | Some _ -> true
-
-let is_empty = function
-  | None -> true
-  | Some _ -> false
+let is_fully_owned _ = true
+let is_empty _ = false
 
 let instantiate = function
-  | [] -> Some (Expr.int 0)
-  | [ v ] -> Some v (* maybe we don't want two options *)
+  | [] -> Expr.int 0
+  | [ v ] -> v (* maybe we don't want two options *)
   | _ -> failwith "Invalid Excl instantiation"
 
-let lvars = function
-  | None -> Containers.SS.empty
-  | Some v -> Expr.lvars v
-
-let alocs = function
-  | None -> Containers.SS.empty
-  | Some v -> Expr.alocs v
-
-let assertions = function
-  | None -> []
-  | Some v -> [ (PointsTo, [], [ v ]) ]
+let lvars = Expr.lvars
+let alocs = Expr.alocs
+let assertions v = [ (PointsTo, [], [ v ]) ]
 
 let get_recovery_tactic (s : t) (e : err_t) : Values.t Recovery_tactic.t =
   match e with
@@ -116,4 +88,4 @@ let can_fix = function
   | MissingState -> true
 
 let apply_fix s = function
-  | FAddState v -> DR.ok (Some v)
+  | FAddState v -> DR.ok v

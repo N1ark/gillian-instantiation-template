@@ -51,66 +51,84 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
          (fun (p, args, ret) -> (SubPred p, "offset" :: args, ret))
          (S.list_preds ())
 
-  let empty () : t = (ExpMap.empty, None)
-  let clear s = s (* TODO *)
-
-  let validate_index (b, n) idx =
+  let validate_index (s : t option) idx =
     let open Delayed.Syntax in
     let* idx = Delayed.reduce idx in
-    match n with
-    | Some n ->
+    match s with
+    | Some (_, Some n) ->
         if%sat Formula.Infix.(idx #>= n) then DR.error (OutOfBounds (idx, n))
         else DR.ok ()
-    | None -> DR.ok ()
+    | Some (_, None) | None -> DR.ok ()
 
-  let execute_action action ((b, n) : t) (args : Values.t list) :
-      (t * Values.t list, err_t) DR.t =
+  (** Add/Remove an element from the optional map, returning an optional map
+      (returns None if the map is empty) *)
+  let update_index (s : t option) idx (sub : S.t option) =
+    match (s, sub) with
+    | None, None -> None
+    | None, Some sub -> Some (ExpMap.singleton idx sub, None)
+    | Some (b, n), None ->
+        let b' = ExpMap.remove idx b in
+        if ExpMap.is_empty b' && Option.is_none n then None else Some (b', n)
+    | Some (b, n), Some sub -> Some (ExpMap.add idx sub b, n)
+
+  let execute_action action (s : t option) (args : Values.t list) :
+      (t option * Values.t list, err_t) DR.t =
     let open DR.Syntax in
     let open Delayed.Syntax in
-    match (action, args) with
-    | SubAction a, idx :: args -> (
-        let** () = validate_index (b, n) idx in
-        let** idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
-        let+ r = S.execute_action a s args in
+    match (action, s, args) with
+    | SubAction a, Some (b, n), idx :: args -> (
+        let** () = validate_index s idx in
+        let** idx, sub = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
+        let+ r = S.execute_action a (Some sub) args in
         match r with
-        | Ok (s', v) -> Ok ((ExpMap.add idx s' b, n), v)
+        | Ok (sub', v) -> Ok (update_index (Some (b, n)) idx sub', v)
         | Error e -> Error (SubError (idx, e)))
-    | SubAction _, [] -> failwith "Missing index for sub-action"
+    | SubAction _, None, _ -> failwith "Missing state for sub-action"
+    | SubAction _, _, [] -> failwith "Missing index for sub-action"
 
-  let consume pred (b, n) ins =
+  let consume pred (b, n) ins : (t option * Values.t list, err_t) DR.t =
     let open DR.Syntax in
     let open Delayed.Syntax in
     match (pred, ins) with
     | SubPred p, idx :: ins -> (
-        let** () = validate_index (b, n) idx in
-        let** idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
-        let+ r = S.consume p s ins in
+        let** () = validate_index (Some (b, n)) idx in
+        let** idx, sub = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
+        let+ r = S.consume p sub ins in
         match r with
-        | Ok (s', outs) -> Ok ((ExpMap.remove idx b, n), outs)
+        | Ok (sub', outs) -> Ok (update_index (Some (b, n)) idx sub', outs)
         | Error e -> Error (SubError (idx, e)))
     | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
     | Length, [] -> (
         match n with
-        | Some n -> DR.ok ((b, None), [ n ])
+        | Some n ->
+            let s' = if ExpMap.is_empty b then None else Some (b, None) in
+            DR.ok (s', [ n ])
         | None -> DR.error MissingLength)
     | Length, _ -> failwith "Invalid arguments for length consume"
 
-  let produce pred (b, n) args =
+  let produce pred (s : t option) args =
     let open Delayed.Syntax in
     match (pred, args) with
     | SubPred p, idx :: args ->
-        let*? _ = validate_index (b, n) idx in
-        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
-        let+ s' = S.produce p s args in
-        (ExpMap.add idx s' b, n)
+        let*? _ = validate_index s idx in
+        let* res =
+          match s with
+          | Some (b, _) -> ExpMap.sym_find_opt idx b
+          | None -> Delayed.return None
+        in
+        let idx, sub =
+          Option.fold ~none:(idx, None)
+            ~some:(fun (idx, sub) -> (idx, Some sub))
+            res
+        in
+        let+ sub' = S.produce p sub args in
+        update_index s idx (Some sub') |> Option.get
     | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
     | Length, [ n' ] -> (
-        match n with
-        | Some _ ->
-            Logging.normal (fun m ->
-                m "Warning MList: vanishing due to duplicate length");
-            Delayed.vanish ()
-        | None -> Delayed.return (b, Some n'))
+        match s with
+        | Some (_, Some _) -> Delayed.vanish ()
+        | Some (b, None) -> Delayed.return (b, Some n')
+        | None -> Delayed.return (ExpMap.empty, Some n'))
     | Length, _ -> failwith "Invalid arguments for length produce"
 
   let compose s1 s2 = failwith "Not implemented"
