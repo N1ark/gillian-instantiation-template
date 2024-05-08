@@ -70,8 +70,8 @@ let compose s1 s2 =
   | _ -> Delayed.vanish ()
 
 let is_fully_owned = function
-  | None -> false
-  | Some _ -> true
+  | None -> Formula.False
+  | Some _ -> Formula.True
 
 let is_empty = function
   | None -> true

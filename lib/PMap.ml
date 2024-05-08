@@ -226,7 +226,13 @@ struct
     let+ h = ExpMap.sym_merge S.compose h1 h2 in
     (h, d)
 
-  let is_fully_owned s = failwith "Implement here (is_fully_owned)"
+  let is_fully_owned =
+    let open Formula.Infix in
+    function
+    | h, Some d ->
+        ExpMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s)) h Formula.True
+    | h, None -> Formula.False
+
   let is_empty s = failwith "Implement here (is_empty)"
 
   let instantiate = function
