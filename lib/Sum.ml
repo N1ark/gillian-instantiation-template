@@ -67,10 +67,6 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   let empty () = S1 (S1.empty ())
 
-  let clear = function
-    | S1 s1 -> S1 (S1.clear s1)
-    | S2 s2 -> S2 (S2.clear s2)
-
   let execute_action action s args =
     let open Delayed.Syntax in
     match (action, s) with

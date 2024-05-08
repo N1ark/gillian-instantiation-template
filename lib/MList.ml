@@ -52,7 +52,6 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
          (S.list_preds ())
 
   let empty () : t = (ExpMap.empty, None)
-  let clear s = s (* TODO *)
 
   let validate_index (b, n) idx =
     let open Delayed.Syntax in

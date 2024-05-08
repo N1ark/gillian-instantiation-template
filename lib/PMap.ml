@@ -5,8 +5,7 @@ open Gil_syntax
 module DR = Delayed_result
 open MyUtils
 
-type index_mode = | Static | Dynamic
-
+type index_mode = Static | Dynamic
 
 (**
   Type for the domain of a PMap.
@@ -18,12 +17,14 @@ type index_mode = | Static | Dynamic
   is_valid_index must always be implemented, while make_fresh is only needed in static mode.
 *)
 module type PMapIndex = sig
-
   val mode : index_mode
+
   (** If the given expression is a valid index for the map *)
   val is_valid_index : Expr.t -> bool Delayed.t
+
   (** Creates a new address, for allocating new state. Only used in static mode *)
   val make_fresh : unit -> Expr.t Delayed.t
+
   (** The arguments used when instantiating new state. Only used in dynamic mode *)
   val default_instantiation : Expr.t list
 end
@@ -52,7 +53,6 @@ module StringIndex : PMapIndex = struct
     | _ -> Delayed.return false
 
   let make_fresh () = failwith "Not implemented (StringIndex.make_fresh)"
-
   let default_instantiation = []
 end
 
@@ -93,7 +93,9 @@ struct
     | Alloc -> "alloc"
 
   let list_actions () =
-    (match I.mode with Static -> [ (Alloc, [ "params" ], [ "address" ]) ] | Dynamic -> [])
+    (match I.mode with
+    | Static -> [ (Alloc, [ "params" ], [ "address" ]) ]
+    | Dynamic -> [])
     @ List.map
         (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
         (S.list_actions ())
@@ -115,7 +117,6 @@ struct
          (S.list_preds ())
 
   let empty () : t = (ExpMap.empty, None)
-  let clear s = s
 
   let modify_domain f d =
     match d with
@@ -136,7 +137,6 @@ struct
           if%sat Formula.SetMem (idx, d) then DR.error (NotAllocated idx)
           else DR.error (MissingCell idx)
 
-
   let update_entry (h, d) idx s =
     if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d)
 
@@ -147,15 +147,17 @@ struct
     | SubAction action, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args -> (
         let* r = validate_index (h, d) idx in
-        let** (h, d), idx, s = match r, I.mode with
+        let** (h, d), idx, s =
+          match (r, I.mode) with
           | Ok (idx, s), _ -> DR.ok ((h, d), idx, s)
-          (** In Dynamic mode, missing cells are instantiated to a default value *)
+          (* In Dynamic mode, missing cells are instantiated to a default value *)
           | Error (MissingCell idx), Dynamic ->
-            let s = S.instantiate I.default_instantiation in
-            let h' = ExpMap.add idx s h in
-            let d' = modify_domain (fun d -> idx :: d) d in
-            DR.ok ((h', d'), idx, s)
-          | Error e, _ -> DR.error e in
+              let s = S.instantiate I.default_instantiation in
+              let h' = ExpMap.add idx s h in
+              let d' = modify_domain (fun d -> idx :: d) d in
+              DR.ok ((h', d'), idx, s)
+          | Error e, _ -> DR.error e
+        in
         let+ r = S.execute_action action s args in
         match r with
         | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
@@ -175,7 +177,7 @@ struct
     match (pred, ins) with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
-        let** idx, s = validate_index (h, d) idx  in
+        let** idx, s = validate_index (h, d) idx in
         let+ r = S.consume pred s ins in
         match r with
         | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
@@ -262,8 +264,9 @@ struct
     | Some d -> union alocs_map (Expr.alocs d)
 
   let assertions (h, d) =
-    ExpMap.fold (fun k s acc ->
-      (List.map (fun (p, i, o) -> (SubPred p, k :: i, o)))
+    let pred_wrap k (p, i, o) = (SubPred p, k :: i, o) in
+    let folder k s acc = (List.map (pred_wrap k)) (S.assertions s) @ acc in
+    ExpMap.fold folder h []
 
   let get_recovery_tactic (h, d) = function
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e

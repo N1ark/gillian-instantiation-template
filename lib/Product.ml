@@ -56,7 +56,6 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   type err_t = E1 of S1.err_t | E2 of S2.err_t [@@deriving show, yojson]
 
   let empty () : t = (S1.empty (), S2.empty ())
-  let clear (s1, s2) = (S1.clear s1, S2.clear s2)
 
   let execute_action action (s1, s2) args =
     let open Delayed.Syntax in

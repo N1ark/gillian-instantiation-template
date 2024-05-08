@@ -30,8 +30,7 @@ let pred_to_str = function
   | PointsTo -> "points_to"
 
 let list_preds () = [ (PointsTo, [], [ "value" ]) ]
-let empty () : t = None (* TODO: Should it be Val (Expr.int 0)? *)
-let clear (v : t) : t = None
+let empty () : t = None
 
 let execute_action action s args =
   match (action, s, args) with

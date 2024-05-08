@@ -46,7 +46,6 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     :: List.map (fun (p, ins, outs) -> (SubPred p, ins, outs)) (S.list_preds ())
 
   let empty () : t = SubState (S.empty ())
-  let clear s = s (* TODO *)
 
   let execute_action action s (args : Values.t list) :
       (t * Values.t list, err_t) DR.t =

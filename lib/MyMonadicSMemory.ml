@@ -25,7 +25,6 @@ module type S = sig
 
   (* Initialisation *)
   val empty : unit -> t
-  val clear : t -> t
 
   (* Execute action *)
   val execute_action :
@@ -57,8 +56,10 @@ module type S = sig
   val get_recovery_tactic : t -> err_t -> Values.t Recovery_tactic.t
 
   (* Debug *)
+
   (** Return all available (action * arguments * outputs) *)
   val list_actions : unit -> (action * string list * string list) list
+
   (** Return all available (predicates * ins * outs) *)
   val list_preds : unit -> (pred * string list * string list) list
 
@@ -105,6 +106,7 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
 
   (* Wrap action / consume / produce with a nice type *)
   let init = empty
+
   let execute_action ~(action_name : string) (state : t) (args : vt list) :
       action_ret Delayed.t =
     match action_from_str action_name with
@@ -127,6 +129,7 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
     List.map (fun (p, ins, outs) -> Asrt.GA (pred_to_str p, ins, outs)) asrts
 
   (* Override methods to keep implementations light *)
+  let clear _ = empty ()
   let pp fmt s = Format.pp_print_string fmt (show s)
   let pp_err fmt e = Format.pp_print_string fmt (show_err_t e)
   let pp_c_fix fmt f = Format.pp_print_string fmt (show_c_fix_t f)
