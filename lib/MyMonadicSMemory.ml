@@ -23,19 +23,21 @@ module type S = sig
   val pred_from_str : string -> pred option
   val pred_to_str : pred -> string
 
-  (* Initialisation *)
-  val empty : unit -> t
-  val clear : t -> t
-
   (* Execute action *)
   val execute_action :
-    action -> t -> Values.t list -> (t * Values.t list, err_t) result Delayed.t
+    action ->
+    t option ->
+    Values.t list ->
+    (t option * Values.t list, err_t) result Delayed.t
 
   (* Consume-Produce *)
   val consume :
-    pred -> t -> Values.t list -> (t * Values.t list, err_t) result Delayed.t
+    pred ->
+    t ->
+    Values.t list ->
+    (t option * Values.t list, err_t) result Delayed.t
 
-  val produce : pred -> t -> Values.t list -> t Delayed.t
+  val produce : pred -> t option -> Values.t list -> t Delayed.t
 
   (* Composition *)
   val compose : t -> t -> t Delayed.t
@@ -57,8 +59,10 @@ module type S = sig
   val get_recovery_tactic : t -> err_t -> Values.t Recovery_tactic.t
 
   (* Debug *)
+
   (** Return all available (action * arguments * outputs) *)
   val list_actions : unit -> (action * string list * string list) list
+
   (** Return all available (predicates * ins * outs) *)
   val list_preds : unit -> (pred * string list * string list) list
 
@@ -79,6 +83,8 @@ end
 module Defaults = struct
   (* Assume no "global context" for now *)
   type init_data = unit
+  type vt = Values.t
+  type st = Subst.t
 
   let get_init_data _ = ()
   let is_overlapping_asrt _ = false
@@ -98,13 +104,34 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
   include Mem
   include Defaults
 
+  type t = Mem.t option [@@deriving show, yojson]
+
   (* Can't do much more anyways *)
-  type vt = Values.t
-  type st = Subst.t
   type action_ret = (t * vt list, err_t) result
 
+  (* Wrap for optional type *)
+  let init _ = None
+  let clear _ = None
+
+  let substitution_in_place s = function
+    | None -> Delayed.return None
+    | Some state -> Delayed.map (substitution_in_place s state) Option.some
+
+  let lvars = Option.fold ~none:Containers.SS.empty ~some:lvars
+  let alocs = Option.fold ~none:Containers.SS.empty ~some:alocs
+  let assertions = Option.fold ~none:[] ~some:assertions
+
+  let get_recovery_tactic =
+    Option.fold ~none:(fun _ -> Recovery_tactic.none) ~some:get_recovery_tactic
+
+  let get_fixes = Option.fold ~none:(fun _ _ _ -> []) ~some:get_fixes
+
+  let apply_fix = function
+    | None -> failwith "Can't apply fix to empty state"
+    | Some state ->
+        fun f -> Delayed.map (apply_fix state f) (Result.map Option.some)
+
   (* Wrap action / consume / produce with a nice type *)
-  let init = empty
   let execute_action ~(action_name : string) (state : t) (args : vt list) :
       action_ret Delayed.t =
     match action_from_str action_name with
@@ -113,13 +140,14 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
 
   let consume ~(core_pred : string) (state : t) (args : vt list) :
       action_ret Delayed.t =
-    match pred_from_str core_pred with
-    | Some pred -> consume pred state args
-    | None -> failwith ("Predicate not found: " ^ core_pred)
+    match (state, pred_from_str core_pred) with
+    | None, _ -> failwith "Can't consume from empty state"
+    | Some state, Some pred -> consume pred state args
+    | Some state, None -> failwith ("Predicate not found: " ^ core_pred)
 
   let produce ~(core_pred : string) (state : t) (args : vt list) : t Delayed.t =
     match pred_from_str core_pred with
-    | Some pred -> produce pred state args
+    | Some pred -> Delayed.map (produce pred state args) Option.some
     | None -> failwith ("Predicate not found: " ^ core_pred)
 
   let assertions ?to_keep s =
