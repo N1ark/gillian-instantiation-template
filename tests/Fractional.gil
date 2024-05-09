@@ -42,6 +42,16 @@ proc test_invalid_store_no_permission(x) {
   return
 };
 
+spec test_invalid_permission_accumulation(x)
+  [[ (x == #x) * <frac>(0.5;#any) ]]
+  [[ (ret == null) * <frac>(0.3;#any) * <frac>(0.3;#any) ]]
+  normal
+proc test_invalid_permission_accumulation(x) {
+  ret := null;
+  return
+};
+
+
 spec test_load()
   [[ (<frac>(1;#any)) ]]
   [[ (ret == {{ #any }}) * <frac>(1.;#any) ]]
