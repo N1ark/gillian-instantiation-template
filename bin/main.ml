@@ -7,7 +7,7 @@ module IDs : MyUtils.IDs = struct
   let id2 = "right_"
 end
 
-module MyMem = Sum.Make (IDs) (Exclusive) (Fractional)
+module MyMem = Product.Make (IDs) (Exclusive) (Fractional)
 
 (* Debug *)
 module Debug = Debug.Make (MyMem)
