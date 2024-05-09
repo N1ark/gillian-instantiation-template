@@ -99,7 +99,7 @@ let is_empty = function
 
 let instantiate = function
   | [] -> Some (Expr.int 0, Expr.num 1.)
-  | _ -> failwith "Invalid Excl instantiation"
+  | _ -> failwith "Invalid Fractional instantiation"
 
 let lvars = function
   | None -> Containers.SS.empty

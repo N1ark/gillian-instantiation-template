@@ -1,13 +1,23 @@
 open Gillian
 open Instantiation
 
+(* Shortcuts *)
+module LocationIndex = PMap.LocationIndex
+module StringIndex = PMap.StringIndex
+module PMap = PMap.Make
+module Product = Product.Make
+
 (* Memory model definition *)
 module IDs : MyUtils.IDs = struct
-  let id1 = "left_"
-  let id2 = "right_"
+  let id1 = "props_"
+  let id2 = "vals_"
 end
 
-module MyMem = Product.Make (IDs) (Exclusive) (Fractional)
+module MyMem =
+  PMap
+    (LocationIndex)
+    (Product (IDs) (PMap (StringIndex) (Exclusive))
+       (PMap (LocationIndex) (Agreement)))
 
 (* Debug *)
 module Debug = Debug.Make (MyMem)

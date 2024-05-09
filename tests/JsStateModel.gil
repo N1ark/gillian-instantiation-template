@@ -1,0 +1,67 @@
+(* Tests for the JS state model *)
+(* ie. PMap(LocationIndex, Product(PMap(StringIndex, Exclusive), PMap(LocationIndex, Agreement))) *)
+
+
+spec test_js()
+  [[ <domainset>(;-{}-) ]]
+  [[
+    (ret == #obj2)
+
+    * <props_points_to>(#obj2, "pointer" ; #obj1)
+    * <props_domainset>(#obj2 ; -{ "pointer" }-)
+    * <vals_domainset>(#obj2 ; -{}-)
+
+    * <props_domainset>(#obj1 ; -{}-)
+    * <vals_domainset>(#obj1 ; -{}-)
+  ]]
+  normal
+proc test_js() {
+  obj1 := [alloc]();
+  obj1 := l-nth(obj1, 0i);
+
+  obj2 := [alloc]();
+  obj2 := l-nth(obj2, 0i);
+  e := [props_store](obj2, "pointer", obj1);
+
+  ret := obj2;
+  return
+};
+
+
+spec test_js_bigger()
+  [[ <domainset>(;-{}-) ]]
+  [[
+    (ret == #obj2)
+
+    * <props_points_to>(#obj2, "pointer" ; #obj1)
+    * <props_points_to>(#obj2, "date" ; {{ #v1, #v2, #v3 }})
+    * <props_domainset>(#obj2 ; -{ "pointer", "date" }-)
+    * <vals_domainset>(#obj2 ; -{}-)
+
+    * <props_points_to>(#obj1, "state-model" ; "javascript")
+    * <props_points_to>(#obj1, "author" ; "opale")
+    * <props_domainset>(#obj1 ; -{ "state-model", "author" }-)
+    * <vals_agree>(#obj1, #v1 ; 9i)
+    * <vals_agree>(#obj1, #v2 ; 5i)
+    * <vals_agree>(#obj1, #v3 ; 2024i)
+    * <vals_domainset>(#obj1 ; -{ #v1, #v2, #v3 }-)
+   ]]
+  normal
+proc test_js_bigger() {
+  obj1 := [alloc]();
+  obj1 := l-nth(obj1, 0i);
+
+  e := [props_store](obj1, "state-model", "javascript");
+  e := [props_store](obj1, "author", "opale");
+  v1 := [vals_alloc](obj1, 9i);
+  v2 := [vals_alloc](obj1, 5i);
+  v3 := [vals_alloc](obj1, 2024i);
+
+  obj2 := [alloc]();
+  obj2 := l-nth(obj2, 0i);
+  e := [props_store](obj2, "date", {{ l-nth(v1, 0i), l-nth(v2, 0i), l-nth(v3, 0i) }});
+  e := [props_store](obj2, "pointer", obj1);
+
+  ret := obj2;
+  return
+};

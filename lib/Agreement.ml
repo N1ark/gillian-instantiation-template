@@ -71,8 +71,8 @@ let is_empty = function
   | Some _ -> false
 
 let instantiate = function
-  | [] -> Some (Expr.int 0)
-  | _ -> failwith "Invalid Excl instantiation"
+  | [ v ] -> Some v
+  | _ -> failwith "Invalid Agreement instantiation"
 
 let lvars = function
   | None -> Containers.SS.empty

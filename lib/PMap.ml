@@ -233,7 +233,9 @@ struct
         ExpMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s)) h Formula.True
     | h, None -> Formula.False
 
-  let is_empty s = failwith "Implement here (is_empty)"
+  let is_empty = function
+    | h, Some _ -> false
+    | h, None -> ExpMap.for_all (fun _ s -> S.is_empty s) h
 
   let instantiate = function
     | [] -> (ExpMap.empty, Some (Expr.ESet []))
