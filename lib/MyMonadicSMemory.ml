@@ -43,7 +43,7 @@ module type S = sig
   val compose : t -> t -> t Delayed.t
 
   (* For Freeable *)
-  val is_fully_owned : t -> bool
+  val is_fully_owned : t -> Formula.t
 
   (* For PMap *)
   val is_empty : t -> bool

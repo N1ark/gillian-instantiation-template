@@ -59,7 +59,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | SubAction _, Some Freed -> DR.error UseAfterFree
     | SubAction _, None -> DR.error MissingResource
     | Free, Some (SubState s) ->
-        if S.is_fully_owned s then DR.ok (Some Freed, [])
+        if%sat S.is_fully_owned s then DR.ok (Some Freed, [])
         else DR.error MissingResource
     | Free, Some Freed -> DR.error DoubleFree
     | Free, None -> DR.error MissingResource
@@ -101,7 +101,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   let is_fully_owned = function
     | SubState s -> S.is_fully_owned s
-    | Freed -> true
+    | Freed -> Formula.True
 
   let is_empty = function
     | SubState s -> S.is_empty s

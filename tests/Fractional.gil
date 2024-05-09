@@ -1,0 +1,73 @@
+(* Tests for Fractional *)
+
+spec test_store(x)
+  [[ (x == #x) * <frac>(1;#any) ]]
+  [[ (ret == null) * <frac>(1;#x) ]]
+  normal
+proc test_store(x) {
+  e := [store](x);
+  ret := null;
+  return
+};
+
+
+spec test_store_with_permission(x)
+  [[ (x == #x) * <frac>(0.5;#any) * <frac>(0.5;#any) ]]
+  [[ (ret == null) * <frac>(0.5;#x) * <frac>(0.5;#x) ]]
+  normal
+proc test_store_with_permission(x) {
+  e := [store](x);
+  ret := null;
+  return
+};
+
+
+spec test_invalid_store(x)
+  [[ (x == #x) ]]
+  [[ (ret == null) ]]
+  normal
+proc test_invalid_store(x) {
+  e := [store](x);
+  ret := null;
+  return
+};
+
+spec test_invalid_store_no_permission(x)
+  [[ (x == #x) * <frac>(0.5;#any) ]]
+  [[ (ret == null) * <frac>(0.5;#any) ]]
+  normal
+proc test_invalid_store_no_permission(x) {
+  e := [store](x);
+  ret := null;
+  return
+};
+
+spec test_invalid_permission_accumulation(x)
+  [[ (x == #x) * <frac>(0.5;#any) ]]
+  [[ (ret == null) * <frac>(0.3;#any) * <frac>(0.3;#any) ]]
+  normal
+proc test_invalid_permission_accumulation(x) {
+  ret := null;
+  return
+};
+
+
+spec test_load()
+  [[ (<frac>(1;#any)) ]]
+  [[ (ret == {{ #any }}) * <frac>(1.;#any) ]]
+  normal
+proc test_load() {
+  x := [load]();
+  ret := x;
+  return
+};
+
+spec test_load_partial_frac()
+  [[ (<frac>(0.5;#any)) ]]
+  [[ (ret == {{ #any }}) * <frac>(0.5;#any) ]]
+  normal
+proc test_load_partial_frac() {
+  x := [load]();
+  ret := x;
+  return
+};

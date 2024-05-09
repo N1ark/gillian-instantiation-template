@@ -1,0 +1,29 @@
+(* Tests for Agreement *)
+
+spec test_load()
+  [[ (<agree>(;#any)) ]]
+  [[ (ret == {{ #any }}) * <agree>(;#any) ]]
+  normal
+proc test_load() {
+  x := [load]();
+  ret := x;
+  return
+};
+
+spec test_agree_duplication()
+  [[ (<agree>(;#any)) ]]
+  [[ (ret == null) * <agree>(;#any) * <agree>(;#any) ]]
+  normal
+proc test_agree_duplication() {
+  ret := null;
+  return
+};
+
+spec test_agree_equality(a)
+  [[ (a == #a) * <agree>(;#a) * <agree>(;#b) ]]
+  [[ (ret == null) * <agree>(;#a) * <agree>(;#b) * (#a == #b) ]]
+  normal
+proc test_agree_equality(a) {
+  ret := null;
+  return
+};

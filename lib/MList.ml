@@ -133,9 +133,12 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   let compose s1 s2 = failwith "Not implemented"
 
-  let is_fully_owned = function
-    | b, Some n -> ExpMap.fold (fun _ v acc -> acc && S.is_fully_owned v) b true
-    | _, None -> false
+  let is_fully_owned =
+    let open Formula.Infix in
+    function
+    | b, Some n ->
+        ExpMap.fold (fun _ v acc -> acc #&& (S.is_fully_owned v)) b Formula.True
+    | _, None -> Formula.False
 
   let is_empty s =
     false (* TODO: can a list ever be empty?? no length & all elems empty? *)

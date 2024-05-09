@@ -57,7 +57,7 @@ let substitution_in_place subst s =
 (** Composition is never defined for Exc! Lifted state model handles "empty" *)
 let compose s1 s2 = Delayed.vanish ()
 
-let is_fully_owned _ = true
+let is_fully_owned _ = Formula.True
 let is_empty _ = false
 
 let instantiate = function

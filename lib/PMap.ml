@@ -117,7 +117,6 @@ struct
          (S.list_preds ())
 
   let empty () : t = (ExpMap.empty, None)
-  let clear s = s
 
   let modify_domain f d =
     match d with
@@ -240,8 +239,16 @@ struct
     let+ h = ExpMap.sym_merge S.compose h1 h2 in
     (h, d)
 
-  let is_fully_owned s = failwith "Implement here (is_fully_owned)"
-  let is_empty s = failwith "Implement here (is_empty)"
+  let is_fully_owned =
+    let open Formula.Infix in
+    function
+    | h, Some d ->
+        ExpMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s)) h Formula.True
+    | h, None -> Formula.False
+
+  let is_empty = function
+    | h, Some _ -> false
+    | h, None -> ExpMap.for_all (fun _ s -> S.is_empty s) h
 
   let instantiate = function
     | [] -> (ExpMap.empty, Some (Expr.ESet []))
@@ -278,11 +285,9 @@ struct
     | Some d -> union alocs_map (Expr.alocs d)
 
   let assertions (h, d) =
-    ExpMap.fold
-      (fun k s acc ->
-        (List.map (fun (p, i, o) -> (SubPred p, k :: i, o))) (S.assertions s)
-        @ acc)
-      h []
+    let pred_wrap k (p, i, o) = (SubPred p, k :: i, o) in
+    let folder k s acc = (List.map (pred_wrap k)) (S.assertions s) @ acc in
+    ExpMap.fold folder h []
 
   let get_recovery_tactic (h, d) = function
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
