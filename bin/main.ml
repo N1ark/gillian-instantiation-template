@@ -2,7 +2,7 @@ open Gillian
 open Instantiation
 
 (* Memory model definition *)
-module MyMem = Fractional
+module MyMem = Agreement
 
 (* Debug *)
 module Debug = Debug.Make (MyMem)
