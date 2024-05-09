@@ -6,8 +6,7 @@ open MyUtils
 
 module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   MyMonadicSMemory.S = struct
-  (* TODO: Should be | None | S1 of S1.t | S2 of S2.t *)
-  type t = S1 of S1.t | S2 of S2.t [@@deriving show, yojson]
+  type t = None | S1 of S1.t | S2 of S2.t [@@deriving show, yojson]
 
   module IDer = Identifier (IDs)
 
@@ -55,17 +54,11 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     p1 @ p2
 
   type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
-  type err_t = E1 of S1.err_t | E2 of S2.err_t [@@deriving show, yojson]
 
-  let split_state f1 f2 = function
-    | S1 s1 -> f1 s1
-    | S2 s2 -> f2 s2
+  type err_t = MissingState | E1 of S1.err_t | E2 of S2.err_t
+  [@@deriving show, yojson]
 
-  let split_err f1 f2 = function
-    | E1 e1 -> f1 e1
-    | E2 e2 -> f2 e2
-
-  let empty () = S1 (S1.empty ())
+  let empty () = None
 
   let execute_action action s args =
     let open Delayed.Syntax in
@@ -80,7 +73,9 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
         match res with
         | Ok (s2', args') -> Ok (S2 s2', args')
         | Error e -> Error (E2 e))
-    | _ -> failwith "Sum.execute_action: mismatched arguments"
+    | _, None -> Delayed.return (Error MissingState)
+    | A1 _, S2 _ | A2 _, S1 _ ->
+        failwith "Sum.execute_action: mismatched arguments"
 
   let consume pred s args =
     let open Delayed.Syntax in
@@ -95,32 +90,50 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
         match res with
         | Ok (s2', args') -> Ok (S2 s2', args')
         | Error e -> Error (E2 e))
-    | _ -> failwith "Sum.consume: mismatched arguments"
+    | _, None -> Delayed.return (Error MissingState)
+    | P1 _, S2 _ | P2 _, S1 _ -> failwith "Sum.consume: mismatched arguments"
 
   let produce pred s args =
     let open Delayed.Syntax in
     match (pred, s) with
+    | P1 pred, None ->
+        let s1 = S1.empty () in
+        let+ s1' = S1.produce pred s1 args in
+        S1 s1'
     | P1 pred, S1 s1 ->
         let+ s1' = S1.produce pred s1 args in
         S1 s1'
+    | P2 pred, None ->
+        let s2 = S2.empty () in
+        let+ s2' = S2.produce pred s2 args in
+        S2 s2'
     | P2 pred, S2 s2 ->
         let+ s2' = S2.produce pred s2 args in
         S2 s2'
-    | _ -> failwith "Sum.produce: mismatched arguments"
+    | P1 _, S2 _ | P2 _, S1 _ -> failwith "Sum.produce: mismatched arguments"
 
   let compose s1 s2 =
     let open Delayed.Syntax in
     match (s1, s2) with
+    | None, s | s, None -> Delayed.return s
     | S1 s1, S1 s2 ->
         let+ s' = S1.compose s1 s2 in
         S1 s'
     | S2 s1, S2 s2 ->
         let+ s' = S2.compose s1 s2 in
         S2 s'
-    | _ -> failwith "Sum.compose: mismatched arguments"
+    | S1 _, S2 _ | S2 _, S1 _ -> failwith "Sum.compose: mismatched arguments"
 
-  let is_fully_owned = split_state S1.is_fully_owned S2.is_fully_owned
-  let is_empty = split_state S1.is_empty S2.is_empty
+  let is_fully_owned = function
+    | S1 s1 -> S1.is_fully_owned s1
+    | S2 s2 -> S2.is_fully_owned s2
+    | None -> Formula.True
+
+  let is_empty = function
+    | S1 s1 -> S1.is_empty s1
+    | S2 s2 -> S2.is_empty s2
+    | None -> true
+
   let instantiate v = S1 (S1.instantiate v)
   (* TODO: does it even make sense? forbid? *)
 
@@ -133,13 +146,22 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | S2 t2 ->
         let+ t2' = S2.substitution_in_place st t2 in
         S2 t2'
+    | None -> Delayed.return None
 
-  let lvars = split_state S1.lvars S2.lvars
-  let alocs = split_state S1.alocs S2.alocs
+  let lvars = function
+    | S1 s1 -> S1.lvars s1
+    | S2 s2 -> S2.lvars s2
+    | None -> Containers.SS.empty
+
+  let alocs = function
+    | S1 s1 -> S1.alocs s1
+    | S2 s2 -> S2.alocs s2
+    | None -> Containers.SS.empty
 
   let assertions = function
     | S1 s1 -> List.map (fun (p, i, o) -> (P1 p, i, o)) (S1.assertions s1)
     | S2 s2 -> List.map (fun (p, i, o) -> (P2 p, i, o)) (S2.assertions s2)
+    | None -> []
 
   let get_recovery_tactic s e =
     match (s, e) with
@@ -163,7 +185,10 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
           fixes
     | _ -> failwith "get_fixes: mismatched arguments"
 
-  let can_fix = split_err S1.can_fix S2.can_fix
+  let can_fix = function
+    | E1 s1 -> S1.can_fix s1
+    | E2 s2 -> S2.can_fix s2
+    | MissingState -> false (* TODO... *)
 
   let apply_fix s f =
     let open Delayed.Syntax in

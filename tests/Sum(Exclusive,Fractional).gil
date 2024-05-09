@@ -1,0 +1,53 @@
+(* Tests for Sum ("left-" "right-", Exclusive, Fractional) *)
+
+spec test_left_load()
+  [[ <left_points_to>(;#x) ]]
+  [[ (ret == {{ #x }}) * <left_points_to>(;#x) ]]
+  normal
+proc test_left_load() {
+  x := [left_load]();
+  ret := x;
+  return
+};
+
+
+spec test_left_store(x)
+  [[ (x == #x) * <left_points_to>(;#any) ]]
+  [[ (ret == null) * <left_points_to>(;#x) ]]
+  normal
+proc test_left_store(x) {
+  x := [left_store](x);
+  ret := null;
+  return
+};
+
+spec test_right_load()
+  [[ <right_frac>(1;#x) ]]
+  [[ (ret == {{ #x }}) * <right_frac>(1;#x) ]]
+  normal
+proc test_right_load() {
+  x := [right_load]();
+  ret := x;
+  return
+};
+
+spec test_right_store(x)
+  [[ (x == #x) * <right_frac>(1;#any) ]]
+  [[ (ret == null) * <right_frac>(1;#x) ]]
+  normal
+proc test_right_store(x) {
+  x := [right_store](x);
+  ret := null;
+  return
+};
+
+
+spec test_right_invalid_store(x)
+  [[ (x == #x) * <right_frac>(0.5;#any) ]]
+  [[ (ret == null) * <right_frac>(0.5;#any) ]]
+  normal
+proc test_right_invalid_store(x) {
+  x := [right_store](x);
+  ret := null;
+  return
+};

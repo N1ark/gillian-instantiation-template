@@ -2,7 +2,12 @@ open Gillian
 open Instantiation
 
 (* Memory model definition *)
-module MyMem = Agreement
+module IDs : MyUtils.IDs = struct
+  let id1 = "left_"
+  let id2 = "right_"
+end
+
+module MyMem = Sum.Make (IDs) (Exclusive) (Fractional)
 
 (* Debug *)
 module Debug = Debug.Make (MyMem)
