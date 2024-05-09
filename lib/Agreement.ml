@@ -66,10 +66,6 @@ let compose s1 s2 =
 
 let is_fully_owned _ = Formula.False
 
-let is_empty = function
-  | None -> true
-  | Some _ -> false
-
 let instantiate = function
   | [ v ] -> Some v
   | _ -> failwith "Invalid Agreement instantiation"

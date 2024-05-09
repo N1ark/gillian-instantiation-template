@@ -2,6 +2,7 @@ open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
+module DR = Delayed_result
 open MyUtils
 
 module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
@@ -23,13 +24,8 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | A2 a -> IDs.id2 ^ S2.action_to_str a
 
   let list_actions () =
-    let a1 =
-      List.map (fun (a, args, ret) -> (A1 a, args, ret)) (S1.list_actions ())
-    in
-    let a2 =
-      List.map (fun (a, args, ret) -> (A2 a, args, ret)) (S2.list_actions ())
-    in
-    a1 @ a2
+    List.map (fun (a, args, ret) -> (A1 a, args, ret)) (S1.list_actions ())
+    @ List.map (fun (a, args, ret) -> (A2 a, args, ret)) (S2.list_actions ())
 
   type pred = P1 of S1.pred | P2 of S2.pred
 
@@ -45,37 +41,34 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | P2 p -> IDs.id2 ^ S2.pred_to_str p
 
   let list_preds () =
-    let p1 =
-      List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
-    in
-    let p2 =
-      List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
-    in
-    p1 @ p2
+    List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
+    @ List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
 
   type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
 
-  type err_t = MissingState | E1 of S1.err_t | E2 of S2.err_t
+  type err_t = MissingState | StateMismatch | E1 of S1.err_t | E2 of S2.err_t
   [@@deriving show, yojson]
-
-  let empty () = None
 
   let execute_action action s args =
     let open Delayed.Syntax in
-    match (action, s) with
-    | A1 action, S1 s1 -> (
+    match action with
+    | A1 action -> (
+        let** s1 =
+          match s with
+          | Some (S1 s1) -> DR.ok Some s1
+          | Some (S2 _) -> DR.error StateMismatch
+          | None -> DR.ok None
+        in
         let+ res = S1.execute_action action s1 args in
         match res with
         | Ok (s1', args') -> Ok (S1 s1', args')
         | Error e -> Error (E1 e))
-    | A2 action, S2 s2 -> (
-        let+ res = S2.execute_action action s2 args in
+    | A2 action -> (
+        let+ res = S2.execute_action action (Some s2) args in
         match res with
         | Ok (s2', args') -> Ok (S2 s2', args')
         | Error e -> Error (E2 e))
     | _, None -> Delayed.return (Error MissingState)
-    | A1 _, S2 _ | A2 _, S1 _ ->
-        failwith "Sum.execute_action: mismatched arguments"
 
   let consume pred s args =
     let open Delayed.Syntax in
@@ -128,11 +121,6 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | S1 s1 -> S1.is_fully_owned s1
     | S2 s2 -> S2.is_fully_owned s2
     | None -> Formula.True
-
-  let is_empty = function
-    | S1 s1 -> S1.is_empty s1
-    | S2 s2 -> S2.is_empty s2
-    | None -> true
 
   let instantiate v = S1 (S1.instantiate v)
   (* TODO: does it even make sense? forbid? *)

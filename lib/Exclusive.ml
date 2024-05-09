@@ -58,7 +58,6 @@ let substitution_in_place subst s =
 let compose s1 s2 = Delayed.vanish ()
 
 let is_fully_owned _ = Formula.True
-let is_empty _ = false
 
 let instantiate = function
   | [] -> Expr.int 0

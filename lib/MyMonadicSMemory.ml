@@ -33,11 +33,11 @@ module type S = sig
   (* Consume-Produce *)
   val consume :
     pred ->
-    t ->
+    t option ->
     Values.t list ->
     (t option * Values.t list, err_t) result Delayed.t
 
-  val produce : pred -> t option -> Values.t list -> t Delayed.t
+  val produce : pred -> t option -> Values.t list -> t option Delayed.t
 
   (* Composition *)
   val compose : t -> t -> t Delayed.t
@@ -46,7 +46,6 @@ module type S = sig
   val is_fully_owned : t -> Formula.t
 
   (* For PMap *)
-  val is_empty : t -> bool
   val instantiate : Expr.t list -> t
 
   (* Core predicates: pred * ins * outs, converted to Asrt.GA *)
@@ -140,14 +139,13 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
 
   let consume ~(core_pred : string) (state : t) (args : vt list) :
       action_ret Delayed.t =
-    match (state, pred_from_str core_pred) with
-    | None, _ -> failwith "Can't consume from empty state"
-    | Some state, Some pred -> consume pred state args
-    | Some state, None -> failwith ("Predicate not found: " ^ core_pred)
+    match pred_from_str core_pred with
+    | Some pred -> consume pred state args
+    | None -> failwith ("Predicate not found: " ^ core_pred)
 
   let produce ~(core_pred : string) (state : t) (args : vt list) : t Delayed.t =
     match pred_from_str core_pred with
-    | Some pred -> Delayed.map (produce pred state args) Option.some
+    | Some pred -> produce pred state args
     | None -> failwith ("Predicate not found: " ^ core_pred)
 
   let assertions ?to_keep s =

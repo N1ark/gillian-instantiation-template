@@ -3,6 +3,7 @@ open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
 module DR = Delayed_result
+module DO = Delayed_option
 open MyUtils
 
 type index_mode = Static | Dynamic
@@ -140,17 +141,17 @@ struct
               if%sat Formula.SetMem (idx, d) then DR.error (NotAllocated idx)
               else DR.error (MissingCell idx))
 
+  let simplify = function
+    | h, None when ExpMap.is_empty h -> None
+    | h, d -> Some (h, d)
+
   (** Add/Remove an element from the optional map, returning an optional map
       (returns None if the map is empty) *)
   let update_entry (s : t option) (idx : Expr.t) (sub : S.t option) : t option =
-    (* This optimisation prevents unsoundness from happening \/ *)
-    (* if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d) *)
     match (s, sub) with
     | None, None -> None
     | None, Some s -> Some (ExpMap.singleton idx s, None)
-    | Some (h, d), None ->
-        let h' = ExpMap.remove idx h in
-        if ExpMap.is_empty h' && Option.is_none d then None else Some (h', d)
+    | Some (h, d), None -> simplify (ExpMap.remove idx h, d)
     | Some (h, d), Some s -> Some (ExpMap.add idx s h, d)
 
   let execute_action action (s : t option) args :
@@ -186,27 +187,28 @@ struct
           let d' = modify_domain (fun d -> idx :: d) d in
           Ok (Some (h', d'), [ idx ])
 
-  let consume pred s ins : (t option * Expr.t list, err_t) result Delayed.t =
+  let consume pred (s : t option) ins :
+      (t option * Expr.t list, err_t) result Delayed.t =
     let open Delayed.Syntax in
     let open DR.Syntax in
     match (pred, ins) with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
-        let** idx, sub = validate_index (Some s) idx in
-        let+ r = S.consume pred sub ins in
+        let** idx, sub = validate_index s idx in
+        let+ r = S.consume pred (Some sub) ins in
         match r with
-        | Ok (sub', v) -> Ok (update_entry (Some s) idx sub', v)
+        | Ok (sub', v) -> Ok (update_entry s idx sub', v)
         | Error e -> Error (SubError (idx, e)))
     | DomainSet, [] -> (
         match s with
-        | h, Some d ->
+        | Some (h, Some d) ->
             (* Become empty if nothing is left *)
             let s' = if ExpMap.is_empty h then None else Some (h, None) in
             DR.ok (s', [ d ])
-        | h, None -> DR.error MissingDomainSet)
+        | None | Some (_, None) -> DR.error MissingDomainSet)
     | DomainSet, _ -> failwith "Invalid number of ins for domainset"
 
-  let produce pred (s : t option) args : t Delayed.t =
+  let produce pred (s : t option) args : t option Delayed.t =
     let open Delayed.Syntax in
     match (pred, args) with
     | SubPred pred, [] -> failwith "Missing index for sub-predicate"
@@ -219,13 +221,13 @@ struct
           | Error _ -> Delayed.vanish ()
         in
         let+ sub' = S.produce pred sub args in
-        update_entry s idx (Some sub') |> Option.get
+        update_entry s idx sub'
     | DomainSet, [ d' ] -> (
         match s with
         | Some (_, Some d) -> Delayed.vanish ()
         (* TODO: if%sat typeof set ?? *)
-        | None -> Delayed.return (ExpMap.empty, Some d')
-        | Some (h, None) -> Delayed.return (h, Some d'))
+        | None -> DO.some (ExpMap.empty, Some d')
+        | Some (h, None) -> DO.some (h, Some d'))
     | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
 
   let compose (h1, d1) (h2, d2) =
@@ -245,10 +247,6 @@ struct
     | h, Some d ->
         ExpMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s)) h Formula.True
     | h, None -> Formula.False
-
-  let is_empty = function
-    | h, Some _ -> false
-    | h, None -> ExpMap.for_all (fun _ s -> S.is_empty s) h
 
   let instantiate = function
     | [] -> (ExpMap.empty, Some (Expr.ESet []))

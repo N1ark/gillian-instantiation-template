@@ -3,6 +3,7 @@ open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
 module DR = Delayed_result
+module DO = Delayed_option
 
 module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   type t = Freed | SubState of S.t [@@deriving yojson, show]
@@ -67,29 +68,32 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let consume pred s ins : (t option * Values.t list, err_t) DR.t =
     let open Delayed.Syntax in
     match (pred, s) with
-    | SubPred p, SubState s -> (
-        let+ r = S.consume p s ins in
+    | SubPred p, Some (SubState s) -> (
+        let+ r = S.consume p (Some s) ins in
         match r with
         | Ok (Some s', outs) -> Ok (Some (SubState s'), outs)
         | Ok (None, outs) -> Ok (None, outs)
         | Error e -> Error (SubError e))
-    | SubPred _, Freed -> DR.error UseAfterFree
-    | FreedPred, SubState _ -> DR.error NotFreed
-    | FreedPred, Freed -> DR.ok (None, [])
+    | SubPred _, Some Freed -> DR.error UseAfterFree
+    | SubPred _, None -> DR.error MissingResource
+    | FreedPred, Some (SubState _) -> DR.error NotFreed
+    | FreedPred, Some Freed -> DR.ok (None, [])
+    | FreedPred, None -> DR.error MissingResource
 
   let produce pred (s : t option) args =
     let open Delayed.Syntax in
+    let open DO.Syntax in
     match (pred, s) with
     | SubPred p, Some (SubState s) ->
-        let+ s' = S.produce p (Some s) args in
+        let++ s' = S.produce p (Some s) args in
         SubState s'
     | SubPred _, Some Freed -> Delayed.vanish ()
     | SubPred p, None ->
-        let+ s' = S.produce p None args in
+        let++ s' = S.produce p None args in
         SubState s'
     | FreedPred, Some (SubState _) -> Delayed.vanish ()
     | FreedPred, Some Freed -> Delayed.vanish ()
-    | FreedPred, None -> Delayed.return Freed
+    | FreedPred, None -> DO.some Freed
 
   let compose s1 s2 =
     let open Delayed.Syntax in
@@ -102,10 +106,6 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let is_fully_owned = function
     | SubState s -> S.is_fully_owned s
     | Freed -> Formula.True
-
-  let is_empty = function
-    | SubState s -> S.is_empty s
-    | Freed -> false
 
   let instantiate v = SubState (S.instantiate v)
 

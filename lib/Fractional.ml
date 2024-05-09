@@ -93,10 +93,6 @@ let is_fully_owned = function
   | None -> Formula.False
   | Some (v, q) -> Formula.Infix.(q #== (Expr.num 1.))
 
-let is_empty = function
-  | None -> true
-  | Some _ -> false
-
 let instantiate = function
   | [] -> Some (Expr.int 0, Expr.num 1.)
   | _ -> failwith "Invalid Fractional instantiation"

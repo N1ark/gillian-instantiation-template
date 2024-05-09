@@ -6,7 +6,7 @@ open MyUtils
 
 module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   MyMonadicSMemory.S = struct
-  type t = S1.t * S2.t [@@deriving show, yojson]
+  type t = S1.t option * S2.t option [@@deriving show, yojson]
 
   module IDer = Identifier (IDs)
 
@@ -23,13 +23,8 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | A2 a -> IDs.id2 ^ S2.action_to_str a
 
   let list_actions () =
-    let l1 =
-      List.map (fun (a, args, ret) -> (A1 a, args, ret)) (S1.list_actions ())
-    in
-    let l2 =
-      List.map (fun (a, args, ret) -> (A2 a, args, ret)) (S2.list_actions ())
-    in
-    l1 @ l2
+    List.map (fun (a, args, ret) -> (A1 a, args, ret)) (S1.list_actions ())
+    @ List.map (fun (a, args, ret) -> (A2 a, args, ret)) (S2.list_actions ())
 
   type pred = P1 of S1.pred | P2 of S2.pred
 
@@ -44,117 +39,154 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | P2 p -> IDs.id2 ^ S2.pred_to_str p
 
   let list_preds () =
-    let l1 =
-      List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
-    in
-    let l2 =
-      List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
-    in
-    l1 @ l2
+    List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
+    @ List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
 
   type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
   type err_t = E1 of S1.err_t | E2 of S2.err_t [@@deriving show, yojson]
 
-  let empty () : t = (S1.empty (), S2.empty ())
+  let simplify = function
+    | None, None -> None
+    | s1, s2 -> Some (s1, s2)
 
-  let execute_action action (s1, s2) args =
+  let execute_action action (s : t option) args =
     let open Delayed.Syntax in
+    let s1, s2 = Option.value ~default:(None, None) s in
     match action with
     | A1 action -> (
         let+ r1 = S1.execute_action action s1 args in
         match r1 with
-        | Ok (s1', v) -> Ok ((s1', s2), v)
+        | Ok (s1', v) -> Ok (simplify (s1', s2), v)
         | Error e -> Error (E1 e))
     | A2 action -> (
         let+ r2 = S2.execute_action action s2 args in
         match r2 with
-        | Ok (s2', v) -> Ok ((s1, s2'), v)
+        | Ok (s2', v) -> Ok (simplify (s1, s2'), v)
         | Error e -> Error (E2 e))
 
-  let consume pred (s1, s2) args =
+  let consume pred (s : t option) args =
     let open Delayed.Syntax in
+    let s1, s2 = Option.value ~default:(None, None) s in
     match pred with
     | P1 pred -> (
         let+ r1 = S1.consume pred s1 args in
         match r1 with
-        | Ok (s1', v) -> Ok ((s1', s2), v)
+        | Ok (s1', v) -> Ok (simplify (s1', s2), v)
         | Error e -> Error (E1 e))
     | P2 pred -> (
         let+ r2 = S2.consume pred s2 args in
         match r2 with
-        | Ok (s2', v) -> Ok ((s1, s2'), v)
+        | Ok (s2', v) -> Ok (simplify (s1, s2'), v)
         | Error e -> Error (E2 e))
 
-  let produce pred (s1, s2) args =
+  let produce pred (s : t option) args =
     let open Delayed.Syntax in
+    let s1, s2 = Option.value ~default:(None, None) s in
     match pred with
     | P1 pred ->
         let+ s1' = S1.produce pred s1 args in
-        (s1', s2)
+        simplify (s1', s2)
     | P2 pred ->
         let+ s2' = S2.produce pred s2 args in
-        (s1, s2')
+        simplify (s1, s2')
 
   let compose (s1a, s2a) (s1b, s2b) =
     let open Delayed.Syntax in
-    let* s1' = S1.compose s1a s1b in
-    let+ s2' = S2.compose s2a s2b in
+    let* s1' =
+      match (s1a, s1b) with
+      | Some s1a, Some s1b ->
+          let+ s = S1.compose s1a s1b in
+          Some s
+      | s1, None | None, s1 -> Delayed.return s1
+    in
+    let+ s2' =
+      match (s2a, s2b) with
+      | Some s2a, Some s2b ->
+          let+ s = S2.compose s2a s2b in
+          Some s
+      | s2, None | None, s2 -> Delayed.return s2
+    in
     (s1', s2')
 
   let is_fully_owned (s1, s2) =
-    Formula.Infix.((S1.is_fully_owned s1) #&& (S2.is_fully_owned s2))
+    Formula.Infix.(
+      (Option.fold ~none:Formula.True ~some:S1.is_fully_owned s1)
+      #&& (Option.fold ~none:Formula.True ~some:S2.is_fully_owned s2))
 
-  let is_empty (s1, s2) = S1.is_empty s1 && S2.is_empty s2
-  let instantiate v = (S1.instantiate v, S2.instantiate v)
+  let instantiate v = (Some (S1.instantiate v), Some (S2.instantiate v))
   (* Maybe forbid it? *)
 
   let substitution_in_place st (s1, s2) =
     let open Delayed.Syntax in
-    let* s1' = S1.substitution_in_place st s1 in
-    let+ s2' = S2.substitution_in_place st s2 in
+    let* s1' =
+      match s1 with
+      | Some s1 ->
+          let+ s1' = S1.substitution_in_place st s1 in
+          Some s1'
+      | None -> Delayed.return None
+    in
+    let+ s2' =
+      match s2 with
+      | Some s2 ->
+          let+ s2' = S2.substitution_in_place st s2 in
+          Some s2'
+      | None -> Delayed.return None
+    in
     (s1', s2')
 
-  let lvars (s1, s2) = Containers.SS.union (S1.lvars s1) (S2.lvars s2)
-  let alocs (s1, s2) = Containers.SS.union (S1.alocs s1) (S2.alocs s2)
+  let lvars (s1, s2) =
+    let l1 = Option.fold ~none:Containers.SS.empty ~some:S1.lvars s1 in
+    let l2 = Option.fold ~none:Containers.SS.empty ~some:S2.lvars s2 in
+    Containers.SS.union l1 l2
+
+  let alocs (s1, s2) =
+    let a1 = Option.fold ~none:Containers.SS.empty ~some:S1.alocs s1 in
+    let a2 = Option.fold ~none:Containers.SS.empty ~some:S2.alocs s2 in
+    Containers.SS.union a1 a2
 
   let assertions (s1, s2) =
-    let a1 = S1.assertions s1 in
+    let a1 = Option.fold ~none:[] ~some:S1.assertions s1 in
     let a1 = List.map (fun (p, i, o) -> (P1 p, i, o)) a1 in
-    let a2 = S2.assertions s2 in
+    let a2 = Option.fold ~none:[] ~some:S2.assertions s2 in
     let a2 = List.map (fun (p, i, o) -> (P2 p, i, o)) a2 in
     a1 @ a2
 
-  let get_recovery_tactic (s1, s2) = function
-    | E1 e -> S1.get_recovery_tactic s1 e
-    | E2 e -> S2.get_recovery_tactic s2 e
+  let get_recovery_tactic s e =
+    match (s, e) with
+    | (Some s1, _), E1 e -> S1.get_recovery_tactic s1 e
+    | (_, Some s2), E2 e -> S2.get_recovery_tactic s2 e
+    | _ -> failwith "get_recovery_tactic: no state provided"
 
-  let get_fixes (s1, s2) pfs tenv = function
-    | E1 e ->
+  let get_fixes s pfs tenv e =
+    match (s, e) with
+    | (Some s1, _), E1 e ->
         let fixes = S1.get_fixes s1 pfs tenv e in
         List.map
           (fun (f, fs, vs, ss) -> (List.map (fun f -> F1 f) f, fs, vs, ss))
           fixes
-    | E2 e ->
+    | (_, Some s2), E2 e ->
         let fixes = S2.get_fixes s2 pfs tenv e in
         List.map
           (fun (f, fs, vs, ss) -> (List.map (fun f -> F2 f) f, fs, vs, ss))
           fixes
+    | _ -> failwith "get_fixes: no state provided"
 
   let can_fix = function
     | E1 e -> S1.can_fix e
     | E2 e -> S2.can_fix e
 
-  let apply_fix (s1, s2) =
+  let apply_fix s f =
     let open Delayed.Syntax in
-    function
-    | F1 f -> (
+    match (s, f) with
+    | (Some s1, s2), F1 f -> (
         let+ s1' = S1.apply_fix s1 f in
         match s1' with
-        | Ok s1' -> Ok (s1', s2)
+        | Ok s1' -> Ok (Some s1', s2)
         | Error e -> Error (E1 e))
-    | F2 f -> (
+    | (s1, Some s2), F2 f -> (
         let+ s2' = S2.apply_fix s2 f in
         match s2' with
-        | Ok s2' -> Ok (s1, s2')
+        | Ok s2' -> Ok (s1, Some s2')
         | Error e -> Error (E2 e))
+    | _ -> failwith "apply_fix: no state provided"
 end
