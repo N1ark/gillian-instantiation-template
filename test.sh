@@ -30,4 +30,5 @@ for file in tests/*.gil; do
     # Compile, run
     esy build 2>&1 > /dev/null
     esy x instantiation verify -a -ltmi "$file"
+    mv file.log "tests/$(basename $file .gil).log"
 done
