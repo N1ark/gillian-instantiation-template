@@ -1,4 +1,4 @@
-(* Tests for PMap(StringIndex, Exc) *)
+(* PMap (StringIndex) (Exclusive) *)
 
 spec test_store(x)
   [[ (x == #x) * <points_to>("field";#any) ]]

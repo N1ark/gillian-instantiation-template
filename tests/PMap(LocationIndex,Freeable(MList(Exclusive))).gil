@@ -1,0 +1,110 @@
+(* PMap (LocationIndex) (Freeable (MList (Exclusive))) *)
+
+spec test_store(a, x)
+  [[ (x == #x) * (a == #a) * <points_to>(#a,0i;#any) ]]
+  [[ (ret == null) * <points_to>(#a,0i;#x) ]]
+  normal
+proc test_store(a, x) {
+  e := [store](a, 0i, x);
+  ret := null;
+  return
+};
+
+spec test_store_domainset(a, x)
+  [[ (x == #x) * (a == #a) * <points_to>(#a,0i;#any) * <domainset>(;-{#a}-) ]]
+  [[ (ret == null) * <points_to>(#a,0i;#x) * <domainset>(;-{#a}-) ]]
+  normal
+proc test_store_domainset(a, x) {
+  e := [store](a, 0i, x);
+  ret := null;
+  return
+};
+
+
+spec test_store_domainset_and_length(a, x)
+  [[ (x == #x) * (a == #a) * <points_to>(#a,0i;#any) * <domainset>(;-{#a}-) * <length>(#a;1i) ]]
+  [[ (ret == null) * <domainset>(;-{#a}-) * <points_to>(#a,0i;#x) * <length>(#a;1i) ]]
+  normal
+proc test_store_domainset_and_length(x) {
+  e := [store](a, 0i, x);
+  ret := null;
+  return
+};
+
+
+spec test_invalid_store(a, x)
+  [[ (x == #x) * (a == #a) ]]
+  [[ (ret == null) ]]
+  normal
+proc test_invalid_store(a, x) {
+  e := [store](a, 0i, x);
+  ret := null;
+  return
+};
+
+spec test_load(a)
+  [[ (a == #a) * (<points_to>(#a,0i;#any)) ]]
+  [[ (ret == {{ #any }}) * <points_to>(#a,0i;#any) ]]
+  normal
+proc test_load(a) {
+  x := [load](a, 0i);
+  ret := x;
+  return
+};
+
+spec test_invalid_load(a)
+  [[ (a == #a) ]]
+  [[ (ret == {{ #any }}) ]]
+  normal
+proc test_invalid_load(a) {
+  x := [load](a, 0i);
+  ret := x;
+  return
+};
+
+spec test_alloc_no_domainset()
+  [[ True ]]
+  [[ (ret == {{#a}}) * <length>(#a;2i)
+    * <points_to>(#a,0i;0i) * <points_to>(#a,1i;0i) ]]
+  normal
+proc test_alloc_no_domainset() {
+  e := [alloc](2i);
+  ret := e;
+  return
+};
+
+spec test_alloc_domainset()
+  [[ <domainset>(;-{#b}-) ]]
+  [[ (ret == {{#a}}) * <length>(#a;2i) * <domainset>(;-{#a, #b}-)
+    * <points_to>(#a,0i;0i) * <points_to>(#a,1i;0i) ]]
+  normal
+proc test_alloc_domainset() {
+  e := [alloc](2i);
+  ret := e;
+  return
+};
+
+spec test_complete()
+  [[ <domainset>(;-{}-) ]]
+  [[ (ret == {{ a, b }})
+    * (a == #a)
+    * (b == #b)
+    * <domainset>(;-{#a, #b}-)
+    * <length>(#a;4i)
+    * <points_to>(#a,0i;1.0) * <points_to>(#a,1i;2.0)
+    * <points_to>(#a,2i;4.0) * <points_to>(#a,3i;8.0)
+    * <freed>(#b;) ]]
+  normal
+proc test_complete() {
+  a := [alloc](4i);
+  a := l-nth(a, 0i);
+  e := [store](a, 0i, 1.0);
+  e := [store](a, 1i, 2.0);
+  e := [store](a, 2i, 4.0);
+  e := [store](a, 3i, 8.0);
+  b := [alloc](8i);
+  b := l-nth(b, 0i);
+  e := [free](b);
+  ret := {{ a, b }};
+  return
+};

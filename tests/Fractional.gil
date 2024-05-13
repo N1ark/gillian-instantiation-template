@@ -1,4 +1,4 @@
-(* Tests for Fractional *)
+(* Fractional *)
 
 spec test_store(x)
   [[ (x == #x) * <frac>(1;#any) ]]

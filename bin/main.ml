@@ -5,8 +5,15 @@ open Instantiation
 module LocationIndex = PMap.LocationIndex
 module StringIndex = PMap.StringIndex
 module PMap = PMap.Make
+module MList = MList.Make
 module Product = Product.Make
+module Sum = Sum.Make
 module Freeable = Freeable.Make
+
+module IDs : MyUtils.IDs = struct
+  let id1 = "left_"
+  let id2 = "right_"
+end
 
 (* Memory model definition *)
 module MyMem = PMap (LocationIndex) (Freeable (Exclusive))

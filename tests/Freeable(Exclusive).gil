@@ -1,4 +1,4 @@
-(* Tests for Freeable(Exc) *)
+(* Freeable (Exclusive) *)
 
 spec test_store(x)
   [[ (x == #x) * <points_to>(;#any) ]]

@@ -1,4 +1,4 @@
-(* Tests for MList(Freeable(Exc)) *)
+(* MList (Freeable (Exclusive)) *)
 
 spec test_invalid_store_after_free(x)
   [[ (x == #x) * <length>(;1i) * <points_to>(0i;#any) ]]

@@ -1,4 +1,4 @@
-(* Tests for PMap(LocationIndex, Exc) *)
+(* PMap (LocationIndex) (Exclusive) *)
 
 spec test_store(x, a)
   [[ (x == #x) * (a == #a) * <points_to>(#a;#any) ]]

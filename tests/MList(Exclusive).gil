@@ -1,4 +1,4 @@
-(* Tests for MList(Exc) *)
+(* MList (Exclusive) *)
 
 spec test_store(x)
   [[ (x == #x) * <length>(;1i) * <points_to>(0i;#any) ]]

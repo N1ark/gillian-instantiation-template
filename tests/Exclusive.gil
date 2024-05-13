@@ -1,4 +1,4 @@
-(* Tests for Exc *)
+(* Exclusive *)
 
 spec test_store(x)
   [[ (x == #x) * <points_to>(;#any) ]]
