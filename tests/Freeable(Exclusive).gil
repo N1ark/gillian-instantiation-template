@@ -30,6 +30,27 @@ proc test_free() {
   return
 };
 
+
+spec helper_test_free_spec_execution()
+  [[ <points_to>(;0i) ]]
+  [[ (ret == null) * <freed>(;) ]]
+  normal
+proc helper_test_free_spec_execution() {
+  e := [free]();
+  ret := null;
+  return
+};
+
+spec test_free_spec_execution()
+  [[ <points_to>(;0i) ]]
+  [[ (ret == null) * <freed>(;) ]]
+  normal
+proc test_free_spec_execution() {
+  e := "helper_test_free_spec_execution"();
+  ret := null;
+  return
+};
+
 spec test_invalid_free_no_resource()
   [[ True ]]
   [[ (ret == null) ]]
