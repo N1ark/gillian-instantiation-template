@@ -109,12 +109,10 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let compose s1 s2 =
     let open Delayed.Syntax in
     match (s1, s2) with
+    | None, s | s, None -> Delayed.return s
     | SubState s1, SubState s2 ->
         let+ s' = S.compose s1 s2 in
         SubState s'
-    | Freed, SubState s2 when S.is_empty s2 -> Delayed.return Freed
-    | SubState s1, Freed when S.is_empty s1 -> Delayed.return Freed
-    (* | Freed, Freed -> Delayed.return Freed are there cases where we want this? *)
     | _ -> Delayed.vanish ()
 
   let is_fully_owned = function
