@@ -6,18 +6,10 @@ module LocationIndex = PMap.LocationIndex
 module StringIndex = PMap.StringIndex
 module PMap = PMap.Make
 module Product = Product.Make
+module Freeable = Freeable.Make
 
 (* Memory model definition *)
-module IDs : MyUtils.IDs = struct
-  let id1 = "props_"
-  let id2 = "vals_"
-end
-
-module MyMem =
-  PMap
-    (LocationIndex)
-    (Product (IDs) (PMap (StringIndex) (Exclusive))
-       (PMap (LocationIndex) (Agreement)))
+module MyMem = PMap (LocationIndex) (Freeable (Exclusive))
 
 (* Debug *)
 module Debug = Debug.Make (MyMem)

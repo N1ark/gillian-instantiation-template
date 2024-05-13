@@ -3,6 +3,7 @@ open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
 open MyUtils
+module DR = Delayed_result
 
 module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   MyMonadicSMemory.S = struct
@@ -55,10 +56,24 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
 
-  type err_t = MissingState | E1 of S1.err_t | E2 of S2.err_t
+  type err_t =
+    | MissingState
+    | MismatchedState
+    | E1 of S1.err_t
+    | E2 of S2.err_t
   [@@deriving show, yojson]
 
   let empty () = None
+
+  let get_s1 = function
+    | S1 s1 -> DR.ok s1
+    | None -> DR.ok (S1.empty ())
+    | S2 _ -> DR.error MismatchedState
+
+  let get_s2 = function
+    | S2 s2 -> DR.ok s2
+    | None -> DR.ok (S2.empty ())
+    | S1 _ -> DR.error MismatchedState
 
   let execute_action action s args =
     let open Delayed.Syntax in
@@ -66,51 +81,50 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | A1 action, S1 s1 -> (
         let+ res = S1.execute_action action s1 args in
         match res with
-        | Ok (s1', args') -> Ok (S1 s1', args')
+        | Ok (s1', v) when S1.is_empty s1' -> Ok (None, v)
+        | Ok (s1', v) -> Ok (S1 s1', v)
         | Error e -> Error (E1 e))
     | A2 action, S2 s2 -> (
         let+ res = S2.execute_action action s2 args in
         match res with
-        | Ok (s2', args') -> Ok (S2 s2', args')
+        | Ok (s2', v) when S2.is_empty s2' -> Ok (None, v)
+        | Ok (s2', v) -> Ok (S2 s2', v)
         | Error e -> Error (E2 e))
     | _, None -> Delayed.return (Error MissingState)
     | A1 _, S2 _ | A2 _, S1 _ ->
         failwith "Sum.execute_action: mismatched arguments"
 
-  let consume pred s args =
+  let consume pred s ins =
     let open Delayed.Syntax in
-    match (pred, s) with
-    | P1 pred, S1 s1 -> (
-        let+ res = S1.consume pred s1 args in
+    let open DR.Syntax in
+    match pred with
+    | P1 pred -> (
+        let** s1 = get_s1 s in
+        let+ res = S1.consume pred s1 ins in
         match res with
-        | Ok (s1', args') -> Ok (S1 s1', args')
+        | Ok (s1', outs) when S1.is_empty s1' -> Ok (None, outs)
+        | Ok (s1', outs) -> Ok (S1 s1', outs)
         | Error e -> Error (E1 e))
-    | P2 pred, S2 s2 -> (
-        let+ res = S2.consume pred s2 args in
+    | P2 pred -> (
+        let** s2 = get_s2 s in
+        let+ res = S2.consume pred s2 ins in
         match res with
-        | Ok (s2', args') -> Ok (S2 s2', args')
+        | Ok (s2', outs) when S2.is_empty s2' -> Ok (None, outs)
+        | Ok (s2', outs) -> Ok (S2 s2', outs)
         | Error e -> Error (E2 e))
-    | _, None -> Delayed.return (Error MissingState)
-    | P1 _, S2 _ | P2 _, S1 _ -> failwith "Sum.consume: mismatched arguments"
 
   let produce pred s args =
     let open Delayed.Syntax in
-    match (pred, s) with
-    | P1 pred, None ->
-        let s1 = S1.empty () in
+    let open MyUtils in
+    match pred with
+    | P1 pred ->
+        let*? s1 = get_s1 s in
         let+ s1' = S1.produce pred s1 args in
         S1 s1'
-    | P1 pred, S1 s1 ->
-        let+ s1' = S1.produce pred s1 args in
-        S1 s1'
-    | P2 pred, None ->
-        let s2 = S2.empty () in
+    | P2 pred ->
+        let*? s2 = get_s2 s in
         let+ s2' = S2.produce pred s2 args in
         S2 s2'
-    | P2 pred, S2 s2 ->
-        let+ s2' = S2.produce pred s2 args in
-        S2 s2'
-    | P1 _, S2 _ | P2 _, S1 _ -> failwith "Sum.produce: mismatched arguments"
 
   let compose s1 s2 =
     let open Delayed.Syntax in
@@ -130,6 +144,8 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | None -> Formula.True
 
   let is_empty = function
+    (* Technically these two branches aren't needed because we automatically switch to None if
+       the state is empty after consume/execute action... *)
     | S1 s1 -> S1.is_empty s1
     | S2 s2 -> S2.is_empty s2
     | None -> true
@@ -189,6 +205,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | E1 s1 -> S1.can_fix s1
     | E2 s2 -> S2.can_fix s2
     | MissingState -> false (* TODO... *)
+    | MismatchedState -> false
 
   let apply_fix s f =
     let open Delayed.Syntax in

@@ -23,13 +23,8 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | A2 a -> IDs.id2 ^ S2.action_to_str a
 
   let list_actions () =
-    let l1 =
-      List.map (fun (a, args, ret) -> (A1 a, args, ret)) (S1.list_actions ())
-    in
-    let l2 =
-      List.map (fun (a, args, ret) -> (A2 a, args, ret)) (S2.list_actions ())
-    in
-    l1 @ l2
+    List.map (fun (a, args, ret) -> (A1 a, args, ret)) (S1.list_actions ())
+    @ List.map (fun (a, args, ret) -> (A2 a, args, ret)) (S2.list_actions ())
 
   type pred = P1 of S1.pred | P2 of S2.pred
 
@@ -44,13 +39,8 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | P2 p -> IDs.id2 ^ S2.pred_to_str p
 
   let list_preds () =
-    let l1 =
-      List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
-    in
-    let l2 =
-      List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
-    in
-    l1 @ l2
+    List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
+    @ List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
 
   type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
   type err_t = E1 of S1.err_t | E2 of S2.err_t [@@deriving show, yojson]

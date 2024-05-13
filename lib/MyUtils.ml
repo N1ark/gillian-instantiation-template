@@ -91,13 +91,12 @@ let pp_opt pp_v fmt = function
   | Some v -> Format.fprintf fmt "Some %a" pp_v v
   | None -> Format.pp_print_string fmt "None"
 
-let bind_vanish_on_err
-    (x : ('a, 'e) result Delayed.t)
-    (f : 'a Delayed.t -> 'b Delayed.t) : 'b Delayed.t =
+let bind_vanish_on_err (x : ('a, 'e) result Delayed.t) (f : 'a -> 'b Delayed.t)
+    : 'b Delayed.t =
   let open Delayed.Syntax in
   let* x = x in
   match x with
-  | Ok x -> f (Delayed.return x)
+  | Ok x -> f x
   | Error _ -> Delayed.vanish ()
 
 let ( let*? ) = bind_vanish_on_err
