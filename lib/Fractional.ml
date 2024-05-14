@@ -2,14 +2,15 @@ open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
-module DR = Delayed_result
+module DSR = DelayedSymResult
 module Recovery_tactic = Gillian.General.Recovery_tactic
 
 (** Value * Fraction *)
 type t = (Expr.t * Expr.t) option [@@deriving show, yojson]
 
 type c_fix_t = unit [@@deriving show]
-type err_t = MissingState | NotEnoughPermission [@@deriving show, yojson]
+type err_t = NotEnoughPermission [@@deriving show, yojson]
+type miss_t = MissingState [@@deriving show, yojson]
 type action = Load | Store
 type pred = Frac
 
@@ -37,13 +38,13 @@ let empty () : t = None
 let execute_action action s args =
   let open Formula.Infix in
   match (action, s, args) with
-  | Load, None, _ -> DR.error MissingState
-  | Load, Some (v, q), [] -> DR.ok (Some (v, q), [ v ])
+  | Load, None, _ -> DSR.miss MissingState
+  | Load, Some (v, q), [] -> DSR.ok (Some (v, q), [ v ])
   | Load, _, _ -> failwith "Invalid Load action"
-  | Store, None, _ -> DR.error MissingState
-  | Store, Some (v, q), [ v' ] ->
-      if%sat q #== (Expr.num 1.) then DR.ok (Some (v', q), [])
-      else DR.error NotEnoughPermission
+  | Store, None, _ -> DSR.miss MissingState
+  | Store, Some (_, q), [ v' ] ->
+      if%sat q #== (Expr.num 1.) then DSR.ok (Some (v', q), [])
+      else DSR.lfail NotEnoughPermission
   | Store, _, _ -> failwith "Invalid Store action"
 
 let consume core_pred s args =
@@ -51,12 +52,12 @@ let consume core_pred s args =
   let open Expr.Infix in
   match (core_pred, s, args) with
   | Frac, Some (v, q), [ q' ] ->
-      if%sat q #== q' then DR.ok (None, [ v ])
+      if%sat q #== q' then DSR.ok (None, [ v ])
       else
-        DR.ok
+        DSR.ok
           ~learned:[ q' #>. (Expr.num 0.); (q -. q') #>. (Expr.num 0.) ]
           (Some (v, q -. q'), [ v ])
-  | Frac, None, _ -> DR.error MissingState
+  | Frac, None, _ -> DSR.miss MissingState
   | Frac, _, _ -> failwith "Invalid Agree consume"
 
 let produce core_pred s args =
@@ -71,7 +72,6 @@ let produce core_pred s args =
   | Frac, _, _ -> failwith "Invalid PointsTo produce"
 
 let substitution_in_place subst s =
-  let open Delayed.Syntax in
   match s with
   | None -> Delayed.return None
   | Some (v, q) ->
@@ -91,7 +91,7 @@ let compose (s1 : t) (s2 : t) =
 
 let is_fully_owned = function
   | None -> Formula.False
-  | Some (v, q) -> Formula.Infix.(q #== (Expr.num 1.))
+  | Some (_, q) -> Formula.Infix.(q #== (Expr.num 1.))
 
 let is_empty = function
   | None -> true
@@ -103,26 +103,21 @@ let instantiate = function
 
 let lvars = function
   | None -> Containers.SS.empty
-  | Some (v, q) -> Expr.lvars v
+  | Some (v, _) -> Expr.lvars v
 
 let alocs = function
   | None -> Containers.SS.empty
-  | Some (v, q) -> Expr.alocs v
+  | Some (v, _) -> Expr.alocs v
 
 let assertions = function
   | None -> []
   | Some (v, q) -> [ (Frac, [ q ], [ v ]) ]
 
-let get_recovery_tactic (s : t) (e : err_t) : Values.t Recovery_tactic.t =
-  match e with
-  (* | MissingState -> Recovery_tactic.try_unfold ??? *)
-  | _ -> Recovery_tactic.none
+let get_recovery_tactic (_ : t) = function
+  | MissingState -> Recovery_tactic.none (* TODO *)
 
-let get_fixes s pfs tenv = function
+let get_fixes _ _ _ = function
   | _ -> []
 
-let can_fix = function
-  | _ -> false
-
-let apply_fix s = function
-  | _ -> Delayed.vanish ()
+let apply_fix _ = function
+  | _ -> Delayed.vanish () (* TODO *)

@@ -2,17 +2,17 @@ open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
-module DR = Delayed_result
+open SymResult
+module DSR = DelayedSymResult
 
 module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   type t = None | Freed | SubState of S.t [@@deriving yojson, show]
-  type c_fix_t = SubFix of S.c_fix_t [@@deriving show]
+  type c_fix_t = S.c_fix_t [@@deriving show]
 
-  type err_t =
-    | DoubleFree
-    | UseAfterFree
-    | MissingResource
-    | SubError of S.err_t
+  type err_t = DoubleFree | UseAfterFree | SubError of S.err_t
+  [@@deriving show, yojson]
+
+  type miss_t = MissingResource | SubMiss of S.miss_t
   [@@deriving show, yojson]
 
   type action = Free | SubAction of S.action
@@ -47,50 +47,45 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   let empty () : t = None
 
+  let map_lift f = function
+    | Ok x -> Ok (f x)
+    | LFail e -> LFail (SubError e)
+    | Miss m -> Miss (SubMiss m)
+
+  let ( let+^ ) x f = Delayed.map x (map_lift f)
+
   let simplify = function
     | s when S.is_empty s -> None
     | s -> SubState s
 
   let execute_action action s (args : Values.t list) :
-      (t * Values.t list, err_t) DR.t =
-    let open Delayed.Syntax in
-    let open DR.Syntax in
+      (t * Values.t list, err_t, miss_t) DSR.t =
     match (action, s) with
-    | SubAction a, SubState s -> (
-        let+ r = S.execute_action a s args in
-        match r with
-        | Ok (s', outs) -> Ok (simplify s', outs)
-        | Error e -> Error (SubError e))
-    | SubAction a, None -> (
-        let+ r = S.execute_action a (S.empty ()) args in
-        match r with
-        | Ok (s', outs) -> Ok (simplify s', outs)
-        | Error e -> Error (SubError e))
-    | SubAction _, Freed -> DR.error UseAfterFree
+    | SubAction a, SubState s ->
+        let+^ s', outs = S.execute_action a s args in
+        (simplify s', outs)
+    | SubAction a, None ->
+        let+^ s', outs = S.execute_action a (S.empty ()) args in
+        (simplify s', outs)
+    | SubAction _, Freed -> DSR.lfail UseAfterFree
     | Free, SubState s ->
-        if%sat S.is_fully_owned s then DR.ok (Freed, [])
-        else DR.error MissingResource
-    | Free, Freed -> DR.error DoubleFree
-    | Free, None -> DR.error MissingResource
+        if%sat S.is_fully_owned s then DSR.ok (Freed, [])
+        else DSR.miss MissingResource
+    | Free, Freed -> DSR.lfail DoubleFree
+    | Free, None -> DSR.miss MissingResource
 
   let consume pred s ins =
-    let open Delayed.Syntax in
-    let open DR.Syntax in
     match (pred, s) with
-    | SubPred p, SubState s -> (
-        let+ r = S.consume p s ins in
-        match r with
-        | Ok (s', outs) -> Ok (simplify s', outs)
-        | Error e -> Error (SubError e))
-    | SubPred p, Freed -> DR.error UseAfterFree
-    | SubPred p, None -> (
-        let+ r = S.consume p (S.empty ()) ins in
-        match r with
-        | Ok (s', outs) -> Ok (simplify s', outs)
-        | Error e -> Error (SubError e))
-    | FreedPred, SubState s -> DR.error UseAfterFree
-    | FreedPred, Freed -> DR.ok (empty (), [])
-    | FreedPred, None -> DR.error MissingResource
+    | SubPred p, SubState s ->
+        let+^ s', outs = S.consume p s ins in
+        (simplify s', outs)
+    | SubPred _, Freed -> DSR.lfail UseAfterFree
+    | SubPred p, None ->
+        let+^ s', outs = S.consume p (S.empty ()) ins in
+        (simplify s', outs)
+    | FreedPred, SubState _ -> DSR.lfail UseAfterFree
+    | FreedPred, Freed -> DSR.ok (empty (), [])
+    | FreedPred, None -> DSR.miss MissingResource
 
   let produce pred s args =
     let open Delayed.Syntax in
@@ -151,35 +146,21 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   let get_recovery_tactic s e =
     match (s, e) with
-    | SubState s, SubError e -> S.get_recovery_tactic s e
+    | SubState s, SubMiss e -> S.get_recovery_tactic s e
     | _ -> Gillian.General.Recovery_tactic.none (* TODO *)
 
   let get_fixes s pfs tenv e =
     match (e, s) with
-    | SubError e, SubState s ->
-        let mapper (fs, fml, t, c) =
-          (List.map (fun f -> SubFix f) fs, fml, t, c)
-        in
-        List.map mapper (S.get_fixes s pfs tenv e)
+    | SubMiss e, SubState s -> S.get_fixes s pfs tenv e
     | _ -> [] (* TODO *)
 
-  let can_fix = function
-    | SubError e -> S.can_fix e
-    | MissingResource -> true (* TODO *)
-    | _ -> false
-
   let apply_fix s f =
-    let open Delayed.Syntax in
-    match (f, s) with
-    | SubFix f, None -> (
-        let+ r = S.apply_fix (S.empty ()) f in
-        match r with
-        | Ok s' -> Ok (simplify s')
-        | Error e -> Error (SubError e))
-    | SubFix f, SubState s -> (
-        let+ r = S.apply_fix s f in
-        match r with
-        | Ok s' -> Ok (simplify s')
-        | Error e -> Error (SubError e))
-    | SubFix _, Freed -> failwith "Cannot apply subfix to freed state"
+    match s with
+    | None ->
+        let+^ s' = S.apply_fix (S.empty ()) f in
+        simplify s'
+    | SubState s ->
+        let+^ s' = S.apply_fix s f in
+        simplify s'
+    | Freed -> DSR.lfail UseAfterFree
 end

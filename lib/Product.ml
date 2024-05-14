@@ -1,7 +1,7 @@
 open Gillian.Monadic
-open Gillian.Symbolic
 open Gil_syntax
 module Containers = Gillian.Utils.Containers
+open SymResult
 open MyUtils
 
 module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
@@ -44,6 +44,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
   type err_t = E1 of S1.err_t | E2 of S2.err_t [@@deriving show, yojson]
+  type miss_t = M1 of S1.miss_t | M2 of S2.miss_t [@@deriving show, yojson]
 
   let empty () : t = (S1.empty (), S2.empty ())
 
@@ -54,12 +55,14 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
         let+ r1 = S1.execute_action action s1 args in
         match r1 with
         | Ok (s1', v) -> Ok ((s1', s2), v)
-        | Error e -> Error (E1 e))
+        | LFail e -> LFail (E1 e)
+        | Miss m -> Miss (M1 m))
     | A2 action -> (
         let+ r2 = S2.execute_action action s2 args in
         match r2 with
         | Ok (s2', v) -> Ok ((s1, s2'), v)
-        | Error e -> Error (E2 e))
+        | LFail e -> LFail (E2 e)
+        | Miss m -> Miss (M2 m))
 
   let consume pred (s1, s2) args =
     let open Delayed.Syntax in
@@ -68,12 +71,14 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
         let+ r1 = S1.consume pred s1 args in
         match r1 with
         | Ok (s1', v) -> Ok ((s1', s2), v)
-        | Error e -> Error (E1 e))
+        | LFail e -> LFail (E1 e)
+        | Miss m -> Miss (M1 m))
     | P2 pred -> (
         let+ r2 = S2.consume pred s2 args in
         match r2 with
         | Ok (s2', v) -> Ok ((s1, s2'), v)
-        | Error e -> Error (E2 e))
+        | LFail e -> LFail (E2 e)
+        | Miss m -> Miss (M2 m))
 
   let produce pred (s1, s2) args =
     let open Delayed.Syntax in
@@ -115,24 +120,17 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     a1 @ a2
 
   let get_recovery_tactic (s1, s2) = function
-    | E1 e -> S1.get_recovery_tactic s1 e
-    | E2 e -> S2.get_recovery_tactic s2 e
+    | M1 m -> S1.get_recovery_tactic s1 m
+    | M2 m -> S2.get_recovery_tactic s2 m
 
-  let get_fixes (s1, s2) pfs tenv = function
-    | E1 e ->
-        let fixes = S1.get_fixes s1 pfs tenv e in
-        List.map
-          (fun (f, fs, vs, ss) -> (List.map (fun f -> F1 f) f, fs, vs, ss))
-          fixes
-    | E2 e ->
-        let fixes = S2.get_fixes s2 pfs tenv e in
-        List.map
-          (fun (f, fs, vs, ss) -> (List.map (fun f -> F2 f) f, fs, vs, ss))
-          fixes
-
-  let can_fix = function
-    | E1 e -> S1.can_fix e
-    | E2 e -> S2.can_fix e
+  let get_fixes (s1, s2) pfs tenv =
+    let fix_mapper f =
+      List.map (fun (fxs, fml, vars, lvars) ->
+          (List.map f fxs, fml, vars, lvars))
+    in
+    function
+    | M1 m -> S1.get_fixes s1 pfs tenv m |> fix_mapper (fun f -> F1 f)
+    | M2 m -> S2.get_fixes s2 pfs tenv m |> fix_mapper (fun f -> F2 f)
 
   let apply_fix (s1, s2) =
     let open Delayed.Syntax in
@@ -141,10 +139,12 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
         let+ s1' = S1.apply_fix s1 f in
         match s1' with
         | Ok s1' -> Ok (s1', s2)
-        | Error e -> Error (E1 e))
+        | LFail e -> LFail (E1 e)
+        | Miss m -> Miss (M1 m))
     | F2 f -> (
         let+ s2' = S2.apply_fix s2 f in
         match s2' with
         | Ok s2' -> Ok (s1, s2')
-        | Error e -> Error (E2 e))
+        | LFail e -> LFail (E2 e)
+        | Miss m -> Miss (M2 m))
 end

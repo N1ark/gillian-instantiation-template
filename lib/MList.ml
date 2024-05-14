@@ -2,9 +2,16 @@ open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
-module DR = Delayed_result
+open SymResult
+module DSR = DelayedSymResult
 open MyUtils
 
+(**
+List state model transformer. ALlows storing a list of symbolic states, indexed by an integer in
+the range \[0, n) where n is the length of the list.
+Unlike PMap, there is no simplification of entries via a domainset, and instead an optional
+length is used.
+*)
 module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   type t = S.t ExpMap.t * Expr.t option [@@deriving yojson]
 
@@ -17,22 +24,23 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   type err_t =
     | OutOfBounds of Expr.t * Expr.t (* Accessed index, list length *)
-    | MissingCell of Expr.t (* Accessed index *)
-    | MissingLength
     | SubError of Expr.t * S.err_t
   [@@deriving show, yojson]
 
-  type action = SubAction of S.action
+  type miss_t =
+    | MissingCell of Expr.t (* Accessed index *)
+    | MissingLength
+    | SubMiss of Expr.t * S.miss_t
+  [@@deriving show, yojson]
 
-  let action_from_str str =
-    Option.map (fun a -> SubAction a) (S.action_from_str str)
+  type action = S.action
 
-  let action_to_str = function
-    | SubAction a -> S.action_to_str a
+  let action_from_str = S.action_from_str
+  let action_to_str = S.action_to_str
 
   let list_actions () =
     List.map
-      (fun (a, args, ret) -> (SubAction a, "offset" :: args, ret))
+      (fun (a, args, ret) -> (a, "offset" :: args, ret))
       (S.list_actions ())
 
   type pred = Length | SubPred of S.pred
@@ -53,49 +61,57 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   let empty () : t = (ExpMap.empty, None)
 
-  let validate_index (b, n) idx =
+  let validate_index (_, n) idx =
     let open Delayed.Syntax in
     let* idx = Delayed.reduce idx in
     match n with
     | Some n ->
-        if%sat Formula.Infix.(idx #>= n) then DR.error (OutOfBounds (idx, n))
-        else DR.ok ()
-    | None -> DR.ok ()
+        if%sat Formula.Infix.(Expr.zero_i #<= idx #&& (idx #< n)) then DSR.ok ()
+        else DSR.lfail (OutOfBounds (idx, n))
+    | None -> DSR.ok ()
 
   let execute_action action ((b, n) : t) (args : Values.t list) :
-      (t * Values.t list, err_t) DR.t =
-    let open DR.Syntax in
+      (t * Values.t list, err_t, miss_t) DSR.t =
+    let open DSR.Syntax in
     let open Delayed.Syntax in
-    match (action, args) with
-    | SubAction a, idx :: args -> (
+    match args with
+    | idx :: args -> (
         let** () = validate_index (b, n) idx in
-        let** idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
-        let+ r = S.execute_action a s args in
+        let** idx, s = ExpMap.sym_find_res idx b ~miss:(MissingCell idx) in
+        let+ r = S.execute_action action s args in
         match r with
         | Ok (s', v) -> Ok ((ExpMap.add idx s' b, n), v)
-        | Error e -> Error (SubError (idx, e)))
-    | SubAction _, [] -> failwith "Missing index for sub-action"
+        | LFail e -> LFail (SubError (idx, e))
+        | Miss m -> Miss (SubMiss (idx, m)))
+    | [] -> failwith "Missing index for sub-action"
 
   let consume pred (b, n) ins =
-    let open DR.Syntax in
+    let open DSR.Syntax in
     let open Delayed.Syntax in
     match (pred, ins) with
     | SubPred p, idx :: ins -> (
         let** () = validate_index (b, n) idx in
-        let** idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
+        let** idx, s = ExpMap.sym_find_res idx b ~miss:(MissingCell idx) in
         let+ r = S.consume p s ins in
         match r with
-        | Ok (s', outs) -> Ok ((ExpMap.remove idx b, n), outs)
-        | Error e -> Error (SubError (idx, e)))
+        | Ok (s', outs) ->
+            (* TODO: this smells fishy af, bc we sometimes remove it? but not always?
+               but then get a missing if entry not found?
+               Need to check how to distinguish missing entry from empty? *)
+            if S.is_empty s' then Ok ((ExpMap.remove idx b, n), outs)
+            else Ok ((ExpMap.add idx s' b, n), outs)
+        | LFail e -> LFail (SubError (idx, e))
+        | Miss m -> Miss (SubMiss (idx, m)))
     | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
     | Length, [] -> (
         match n with
-        | Some n -> DR.ok ((b, None), [ n ])
-        | None -> DR.error MissingLength)
+        | Some n -> DSR.ok ((b, None), [ n ])
+        | None -> DSR.miss MissingLength)
     | Length, _ -> failwith "Invalid arguments for length consume"
 
   let produce pred (b, n) args =
     let open Delayed.Syntax in
+    let open DSR.Syntax in
     match (pred, args) with
     | SubPred p, idx :: args ->
         let*? _ = validate_index (b, n) idx in
@@ -105,24 +121,22 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
     | Length, [ n' ] -> (
         match n with
-        | Some _ ->
-            Logging.normal (fun m ->
-                m "Warning MList: vanishing due to duplicate length");
-            Delayed.vanish ()
+        | Some _ -> Delayed.vanish ()
         | None -> Delayed.return (b, Some n'))
     | Length, _ -> failwith "Invalid arguments for length produce"
 
-  let compose s1 s2 = failwith "Not implemented"
+  let compose _ _ = failwith "Not implemented"
 
   let is_fully_owned =
     let open Formula.Infix in
     function
-    | b, Some n ->
+    | b, Some _ ->
         ExpMap.fold (fun _ v acc -> acc #&& (S.is_fully_owned v)) b Formula.True
     | _, None -> Formula.False
 
-  let is_empty s =
-    false (* TODO: can a list ever be empty?? no length & all elems empty? *)
+  let is_empty = function
+    | b, Some _ -> ExpMap.fold (fun _ v acc -> acc && S.is_empty v) b true
+    | _, None -> true
 
   let instantiate = function
     | n :: args ->
@@ -185,27 +199,21 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | Some n -> (Length, [], [ n ]) :: sub_asrts
     | None -> sub_asrts
 
-  let get_recovery_tactic (b, n) = function
-    | SubError (idx, e) -> (
+  let get_recovery_tactic (b, _) = function
+    | SubMiss (idx, m) -> (
         match ExpMap.find_opt idx b with
-        | Some s -> S.get_recovery_tactic s e
+        | Some s -> S.get_recovery_tactic s m
         | None -> failwith "Invalid index in get_recovery_tactic")
     | _ -> Gillian.General.Recovery_tactic.none
 
-  let get_fixes (b, n) pfs tenv = function
-    | SubError (idx, e) ->
+  let get_fixes (b, _) pfs tenv = function
+    | SubMiss (idx, m) ->
         let v = ExpMap.find idx b in
         let mapper (fs, fml, t, c) =
           (List.map (fun f -> SubFix (idx, f)) fs, fml, t, c)
         in
-        List.map mapper (S.get_fixes v pfs tenv e)
+        List.map mapper (S.get_fixes v pfs tenv m)
     | _ -> failwith "Invalid error in get_fixes"
-
-  let can_fix = function
-    | SubError (_, e) -> S.can_fix e
-    | MissingCell _ -> false
-    | OutOfBounds _ -> false
-    | MissingLength -> false
 
   let apply_fix (b, n) = function
     | SubFix (idx, f) -> (
@@ -214,5 +222,6 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         let+ r = S.apply_fix s f in
         match r with
         | Ok s' -> Ok (ExpMap.add idx s' b, n)
-        | Error e -> Error (SubError (idx, e)))
+        | LFail e -> LFail (SubError (idx, e))
+        | Miss m -> Miss (SubMiss (idx, m)))
 end

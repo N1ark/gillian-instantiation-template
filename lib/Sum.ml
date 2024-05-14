@@ -1,9 +1,9 @@
 open Gillian.Utils
 open Gillian.Monadic
-open Gillian.Symbolic
 open Gil_syntax
 open MyUtils
-module DR = Delayed_result
+open SymResult
+module DSR = DelayedSymResult
 
 module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   MyMonadicSMemory.S = struct
@@ -46,47 +46,58 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
 
-  type err_t =
-    | MissingState
-    | MismatchedState
-    | E1 of S1.err_t
-    | E2 of S2.err_t
+  type err_t = MismatchedState | E1 of S1.err_t | E2 of S2.err_t
+  [@@deriving show, yojson]
+
+  type miss_t = MissingState | M1 of S1.miss_t | M2 of S2.miss_t
   [@@deriving show, yojson]
 
   let empty () = None
 
   let get_s1 = function
-    | S1 s1 -> DR.ok s1
-    | None -> DR.ok (S1.empty ())
-    | S2 _ -> DR.error MismatchedState
+    | S1 s1 -> DSR.ok s1
+    | None -> DSR.ok (S1.empty ())
+    | S2 _ -> DSR.lfail MismatchedState
+
+  let get_s1_ex = function
+    | S1 s1 -> s1
+    | None -> S1.empty ()
+    | S2 _ -> failwith "MismatchedState"
 
   let get_s2 = function
-    | S2 s2 -> DR.ok s2
-    | None -> DR.ok (S2.empty ())
-    | S1 _ -> DR.error MismatchedState
+    | S2 s2 -> DSR.ok s2
+    | None -> DSR.ok (S2.empty ())
+    | S1 _ -> DSR.lfail MismatchedState
+
+  let get_s2_ex = function
+    | S2 s2 -> s2
+    | None -> S2.empty ()
+    | S1 _ -> failwith "MismatchedState"
 
   let execute_action action s args =
     let open Delayed.Syntax in
-    match (action, s) with
-    | A1 action, S1 s1 -> (
+    let open DSR.Syntax in
+    match action with
+    | A1 action -> (
+        let** s1 = get_s1 s in
         let+ res = S1.execute_action action s1 args in
         match res with
         | Ok (s1', v) when S1.is_empty s1' -> Ok (None, v)
         | Ok (s1', v) -> Ok (S1 s1', v)
-        | Error e -> Error (E1 e))
-    | A2 action, S2 s2 -> (
+        | LFail e -> LFail (E1 e)
+        | Miss m -> Miss (M1 m))
+    | A2 action -> (
+        let** s2 = get_s2 s in
         let+ res = S2.execute_action action s2 args in
         match res with
         | Ok (s2', v) when S2.is_empty s2' -> Ok (None, v)
         | Ok (s2', v) -> Ok (S2 s2', v)
-        | Error e -> Error (E2 e))
-    | _, None -> Delayed.return (Error MissingState)
-    | A1 _, S2 _ | A2 _, S1 _ ->
-        failwith "Sum.execute_action: mismatched arguments"
+        | LFail e -> LFail (E2 e)
+        | Miss m -> Miss (M2 m))
 
   let consume pred s ins =
     let open Delayed.Syntax in
-    let open DR.Syntax in
+    let open DSR.Syntax in
     match pred with
     | P1 pred -> (
         let** s1 = get_s1 s in
@@ -94,18 +105,20 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
         match res with
         | Ok (s1', outs) when S1.is_empty s1' -> Ok (None, outs)
         | Ok (s1', outs) -> Ok (S1 s1', outs)
-        | Error e -> Error (E1 e))
+        | LFail e -> LFail (E1 e)
+        | Miss m -> Miss (M1 m))
     | P2 pred -> (
         let** s2 = get_s2 s in
         let+ res = S2.consume pred s2 ins in
         match res with
         | Ok (s2', outs) when S2.is_empty s2' -> Ok (None, outs)
         | Ok (s2', outs) -> Ok (S2 s2', outs)
-        | Error e -> Error (E2 e))
+        | LFail e -> LFail (E2 e)
+        | Miss m -> Miss (M2 m))
 
   let produce pred s args =
     let open Delayed.Syntax in
-    let open MyUtils in
+    let open DSR.Syntax in
     match pred with
     | P1 pred ->
         let*? s1 = get_s1 s in
@@ -169,46 +182,39 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | S2 s2 -> List.map (fun (p, i, o) -> (P2 p, i, o)) (S2.assertions s2)
     | None -> []
 
-  let get_recovery_tactic s e =
-    match (s, e) with
-    | S1 s1, E1 e1 -> S1.get_recovery_tactic s1 e1
-    | S2 s2, E2 e2 -> S2.get_recovery_tactic s2 e2
-    | _ -> failwith "get_recovery_tactic: mismatched arguments"
+  let get_recovery_tactic s = function
+    | M1 m1 -> S1.get_recovery_tactic (get_s1_ex s) m1
+    | M2 m2 -> S2.get_recovery_tactic (get_s2_ex s) m2
+    | MissingState -> failwith "get_recovery_tactic: missing state"
 
-  let get_fixes s pfs tenv e =
-    match (s, e) with
-    | S1 s1, E1 e1 ->
-        let fixes = S1.get_fixes s1 pfs tenv e1 in
-        List.map
-          (fun (fxs, fml, vars, lvars) ->
-            (List.map (fun fx -> F1 fx) fxs, fml, vars, lvars))
-          fixes
-    | S2 s2, E2 e2 ->
-        let fixes = S2.get_fixes s2 pfs tenv e2 in
-        List.map
-          (fun (fxs, fml, vars, lvars) ->
-            (List.map (fun fx -> F2 fx) fxs, fml, vars, lvars))
-          fixes
-    | _ -> failwith "get_fixes: mismatched arguments"
+  let get_fixes s pfs tenv =
+    let fix_mapper f =
+      List.map (fun (fxs, fml, vars, lvars) ->
+          (List.map f fxs, fml, vars, lvars))
+    in
+    function
+    | M1 m1 ->
+        S1.get_fixes (get_s1_ex s) pfs tenv m1 |> fix_mapper (fun fx -> F1 fx)
+    | M2 m2 ->
+        S2.get_fixes (get_s2_ex s) pfs tenv m2 |> fix_mapper (fun fx -> F2 fx)
+    | MissingState -> failwith "get_fixes: missing state"
 
-  let can_fix = function
-    | E1 s1 -> S1.can_fix s1
-    | E2 s2 -> S2.can_fix s2
-    | MissingState -> false (* TODO... *)
-    | MismatchedState -> false
-
-  let apply_fix s f =
+  let apply_fix s =
     let open Delayed.Syntax in
-    match (s, f) with
-    | S1 s1, F1 f1 -> (
+    let open DSR.Syntax in
+    function
+    | F1 f1 -> (
+        let** s1 = get_s1 s in
         let+ res = S1.apply_fix s1 f1 in
         match res with
         | Ok s1' -> Ok (S1 s1')
-        | Error e -> Error (E1 e))
-    | S2 s2, F2 f2 -> (
+        | LFail e -> LFail (E1 e)
+        | Miss m -> Miss (M1 m))
+    | F2 f2 -> (
+        let** s2 = get_s2 s in
         let+ res = S2.apply_fix s2 f2 in
         match res with
         | Ok s2' -> Ok (S2 s2')
-        | Error e -> Error (E2 e))
-    | _ -> failwith "apply_fix: mismatched arguments"
+        | LFail e -> LFail (E2 e)
+        | Miss m -> Miss (M2 m))
 end

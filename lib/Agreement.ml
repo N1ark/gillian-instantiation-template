@@ -2,12 +2,13 @@ open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
-module DR = Delayed_result
+module DSR = DelayedSymResult
 module Recovery_tactic = Gillian.General.Recovery_tactic
 
 type t = Expr.t option [@@deriving show, yojson]
 type c_fix_t = FAddState of Values.t [@@deriving show]
-type err_t = MissingState [@@deriving show, yojson]
+type err_t = unit [@@deriving show, yojson]
+type miss_t = MissingState [@@deriving show, yojson]
 type action = Load
 type pred = Agree
 
@@ -32,14 +33,14 @@ let empty () : t = None
 
 let execute_action action s args =
   match (action, s, args) with
-  | Load, None, _ -> DR.error MissingState
-  | Load, Some v, [] -> DR.ok (Some v, [ v ])
+  | Load, None, _ -> DSR.miss MissingState
+  | Load, Some v, [] -> DSR.ok (Some v, [ v ])
   | Load, _, _ -> failwith "Invalid Load action"
 
 let consume core_pred s args =
   match (core_pred, s, args) with
-  | Agree, Some v, [] -> DR.ok (Some v, [ v ])
-  | Agree, None, _ -> DR.error MissingState
+  | Agree, Some v, [] -> DSR.ok (Some v, [ v ])
+  | Agree, None, _ -> DSR.miss MissingState
   | Agree, _, _ -> failwith "Invalid Agree consume"
 
 let produce core_pred s args =
@@ -50,7 +51,6 @@ let produce core_pred s args =
   | Agree, _, _ -> failwith "Invalid PointsTo produce"
 
 let substitution_in_place subst (heap : t) =
-  let open Delayed.Syntax in
   match heap with
   | None -> Delayed.return None
   | Some v ->
@@ -86,12 +86,10 @@ let assertions = function
   | None -> []
   | Some v -> [ (Agree, [], [ v ]) ]
 
-let get_recovery_tactic (s : t) (e : err_t) : Values.t Recovery_tactic.t =
-  match e with
-  (* | MissingState -> Recovery_tactic.try_unfold ??? *)
-  | _ -> Recovery_tactic.none
+let get_recovery_tactic _ = function
+  | MissingState -> Recovery_tactic.none (* TODO *)
 
-let get_fixes s pfs tenv = function
+let get_fixes _ _ _ = function
   | MissingState ->
       [
         (* TODO: ???????? *)
@@ -101,8 +99,5 @@ let get_fixes s pfs tenv = function
           Containers.SS.empty );
       ]
 
-let can_fix = function
-  | MissingState -> true
-
-let apply_fix s = function
-  | FAddState v -> DR.ok (Some v)
+let apply_fix _ = function
+  | FAddState v -> DSR.ok (Some v)

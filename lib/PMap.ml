@@ -2,7 +2,7 @@ open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
-module DR = Delayed_result
+module DSR = DelayedSymResult
 open MyUtils
 
 type index_mode = Static | Dynamic
@@ -73,13 +73,17 @@ struct
   type c_fix_t = SubFix of Expr.t * S.c_fix_t [@@deriving show]
 
   type err_t =
-    | MissingCell of Expr.t
     | NotAllocated of Expr.t
     | AlreadyAllocated of Expr.t
     | InvalidIndexValue of Expr.t
-    | MissingDomainSet
     | AllocDisallowedInDynamic
     | SubError of Expr.t * S.err_t
+  [@@deriving show, yojson]
+
+  type miss_t =
+    | MissingCell of Expr.t
+    | MissingDomainSet
+    | SubMiss of Expr.t * S.miss_t
   [@@deriving show, yojson]
 
   type action = Alloc | SubAction of S.action
@@ -127,91 +131,89 @@ struct
   let validate_index ((h, d) : t) idx =
     let open Delayed.Syntax in
     let* valid_idx = I.is_valid_index idx in
-    if valid_idx = false then DR.error (InvalidIndexValue idx)
+    if valid_idx = false then DSR.lfail (InvalidIndexValue idx)
     else
       let* match_val = ExpMap.sym_find_opt idx h in
       match (match_val, d) with
-      | Some (idx, v), _ -> DR.ok (idx, v)
-      | None, None -> DR.error (MissingCell idx)
+      | Some (idx, v), _ -> DSR.ok (idx, v)
+      | None, None -> DSR.miss (MissingCell idx)
       | None, Some d ->
-          if%sat Formula.SetMem (idx, d) then DR.error (NotAllocated idx)
-          else DR.error (MissingCell idx)
+          if%sat Formula.SetMem (idx, d) then DSR.lfail (NotAllocated idx)
+          else DSR.miss (MissingCell idx)
 
   let update_entry (h, d) idx s =
     if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d)
 
   let execute_action action ((h, d) : t) args =
     let open Delayed.Syntax in
-    let open DR.Syntax in
+    let open DSR.Syntax in
     match (action, args) with
-    | SubAction action, [] -> failwith "Missing index for sub-action"
+    | SubAction _, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args -> (
         let* r = validate_index (h, d) idx in
         let** (h, d), idx, s =
           match (r, I.mode) with
-          | Ok (idx, s), _ -> DR.ok ((h, d), idx, s)
+          | Ok (idx, s), _ -> DSR.ok ((h, d), idx, s)
           (* In Dynamic mode, missing cells are instantiated to a default value *)
-          | Error (MissingCell idx), Dynamic ->
+          | Miss (MissingCell idx), Dynamic ->
               let s = S.instantiate I.default_instantiation in
               let h' = ExpMap.add idx s h in
               let d' = modify_domain (fun d -> idx :: d) d in
-              DR.ok ((h', d'), idx, s)
-          | Error e, _ -> DR.error e
+              DSR.ok ((h', d'), idx, s)
+          | Miss m, _ -> DSR.miss m
+          | LFail e, _ -> DSR.lfail e
         in
-        let+ r = S.execute_action action s args in
+        let* r = S.execute_action action s args in
         match r with
-        | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
-        | Error e -> Error (SubError (idx, e)))
+        | Ok (s', v) -> DSR.ok (update_entry (h, d) idx s', v)
+        | LFail e -> DSR.lfail (SubError (idx, e))
+        | Miss m -> DSR.miss (SubMiss (idx, m)))
     | Alloc, args ->
-        if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
+        if I.mode = Dynamic then DSR.lfail AllocDisallowedInDynamic
         else
-          let+ idx = I.make_fresh () in
+          let* idx = I.make_fresh () in
           let s = S.instantiate args in
           let h' = ExpMap.add idx s h in
           let d' = modify_domain (fun d -> idx :: d) d in
-          Ok ((h', d'), [ idx ])
+          DSR.ok ((h', d'), [ idx ])
 
   let consume pred (h, d) ins =
     let open Delayed.Syntax in
-    let open DR.Syntax in
+    let open DSR.Syntax in
     match (pred, ins) with
-    | SubPred pred, [] -> failwith "Missing index for sub-predicate"
+    | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
         let** idx, s = validate_index (h, d) idx in
-        let+ r = S.consume pred s ins in
+        let* r = S.consume pred s ins in
         match r with
-        | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
-        | Error e -> Error (SubError (idx, e)))
+        | Ok (s', v) -> DSR.ok (update_entry (h, d) idx s', v)
+        | LFail e -> DSR.lfail (SubError (idx, e))
+        | Miss m -> DSR.miss (SubMiss (idx, m)))
     | DomainSet, [] -> (
         match d with
-        | Some d -> DR.ok ((h, None), [ d ])
-        | None -> DR.error MissingDomainSet)
+        | Some d -> DSR.ok ((h, None), [ d ])
+        | None -> DSR.miss MissingDomainSet)
     | DomainSet, _ -> failwith "Invalid number of ins for domainset"
 
   let produce pred (h, d) args =
     let open Delayed.Syntax in
     match (pred, args) with
-    | SubPred pred, [] -> failwith "Missing index for sub-predicate"
+    | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: args -> (
         let* r = validate_index (h, d) idx in
         match r with
         | Ok (idx, s) ->
             let+ s' = S.produce pred s args in
             update_entry (h, d) idx s'
-        | Error (MissingCell idx) ->
+        | Miss (MissingCell idx) ->
             let s = S.empty () in
             let+ s' = S.produce pred s args in
             update_entry (h, d) idx s'
-        | Error _ ->
-            Logging.normal (fun m ->
-                m "Warning PMap: vanishing due to invalid index");
-            Delayed.vanish ())
+        | Miss _ -> Delayed.vanish ()
+        | LFail _ -> Delayed.vanish ())
     | DomainSet, [ d' ] -> (
         match d with
-        | Some _ ->
-            Logging.normal (fun m ->
-                m "Warning PMap: vanishing due to duplicate domain set");
-            Delayed.vanish ()
+        | Some _ -> Delayed.vanish ()
         | None -> Delayed.return (h, Some d') (* TODO: if%sat typeof set ?? *))
     | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
 
@@ -229,12 +231,12 @@ struct
   let is_fully_owned =
     let open Formula.Infix in
     function
-    | h, Some d ->
+    | h, Some _ ->
         ExpMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s)) h Formula.True
-    | h, None -> Formula.False
+    | _, None -> Formula.False
 
   let is_empty = function
-    | h, Some _ -> false
+    | _, Some _ -> false
     | h, None -> ExpMap.for_all (fun _ s -> S.is_empty s) h
 
   let instantiate = function
@@ -274,32 +276,32 @@ struct
   let assertions (h, d) =
     let pred_wrap k (p, i, o) = (SubPred p, k :: i, o) in
     let folder k s acc = (List.map (pred_wrap k)) (S.assertions s) @ acc in
-    ExpMap.fold folder h []
+    let asrts = ExpMap.fold folder h [] in
+    match d with
+    | None -> asrts
+    | Some d -> (DomainSet, [], [ d ]) :: asrts
 
-  let get_recovery_tactic (h, d) = function
-    | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
-    | _ -> Gillian.General.Recovery_tactic.none
+  let get_recovery_tactic (h, _) = function
+    | SubMiss (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
+    | MissingDomainSet | MissingCell _ -> failwith "Invalid miss"
 
-  let get_fixes (h, d) pfs tenv = function
-    | SubError (idx, e) ->
-        let fixes = S.get_fixes (ExpMap.find idx h) pfs tenv e in
+  let get_fixes (h, _) pfs tenv = function
+    | SubMiss (idx, m) ->
+        let fixes = S.get_fixes (ExpMap.find idx h) pfs tenv m in
         List.map
           (fun (f, fs, vs, ss) ->
             (List.map (fun f -> SubFix (idx, f)) f, fs, vs, ss))
           fixes
-    | _ -> failwith "Implement here (get_fixes)"
+    | _ -> failwith "Invalid miss"
 
-  let can_fix = function
-    | SubError (_, e) -> S.can_fix e
-    | _ -> false (* TODO *)
-
-  let apply_fix (h, d) f =
+  let apply_fix (h, d) =
     let open Delayed.Syntax in
-    match f with
+    function
     | SubFix (idx, f) -> (
         let s = ExpMap.find idx h in
-        let+ r = S.apply_fix s f in
+        let* r = S.apply_fix s f in
         match r with
-        | Ok s' -> Ok (ExpMap.add idx s' h, d)
-        | Error e -> Error (SubError (idx, e)))
+        | Ok s' -> DSR.ok (ExpMap.add idx s' h, d)
+        | LFail e -> DSR.lfail (SubError (idx, e))
+        | Miss m -> DSR.miss (SubMiss (idx, m)))
 end
