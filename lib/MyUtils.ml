@@ -1,7 +1,7 @@
 open Gillian.Utils
 open Gillian.Monadic
-open Gillian.Symbolic
 open Gil_syntax
+open SymResult
 
 module type IDs = sig
   val id1 : string
@@ -51,12 +51,12 @@ module ExpMap = struct
     | Some (k, v) -> Delayed.return (k, v)
     | None -> Delayed.return (k, default ())
 
-  let sym_find_res k m ~err =
+  let sym_find_res k m ~miss =
     let open Delayed.Syntax in
     let+ res = sym_find_opt k m in
     match res with
     | Some (k, v) -> Ok (k, v)
-    | None -> Error err
+    | None -> Miss miss
 
   (** Symbolically composes a map with a list of entries, composing entries when they
     are found to match. *)
@@ -90,13 +90,3 @@ end
 let pp_opt pp_v fmt = function
   | Some v -> Format.fprintf fmt "Some %a" pp_v v
   | None -> Format.pp_print_string fmt "None"
-
-let bind_vanish_on_err (x : ('a, 'e) result Delayed.t) (f : 'a -> 'b Delayed.t)
-    : 'b Delayed.t =
-  let open Delayed.Syntax in
-  let* x = x in
-  match x with
-  | Ok x -> f x
-  | Error _ -> Delayed.vanish ()
-
-let ( let*? ) = bind_vanish_on_err
