@@ -1,25 +1,21 @@
 (* Proof of unsoundness *)
 
-spec free_cell(x)
-  [[ (x == #x) * <points_to>(#x;#anything) ]]
-  [[ (ret == null) * <freed>(#x;) ]]
+spec free_cell()
+  [[ <points_to>(;0i) ]]
+  [[ (ret == null) * <freed>(;) ]]
   normal
-proc free_cell(x) {
-  n := [free](x);
+proc free_cell() {
+  n := [free]();
   ret := null;
   return
 };
 
 spec test_unsoundness()
-  [[ True ]]
+  [[ <points_to>(;0i) ]]
   [[ False ]]
   normal
 proc test_unsoundness() {
-  x := [alloc]();
-  x := l-nth(x, 0i);
-
-  n := "free_cell"(x);
-
+  n := "free_cell"();
   ret := null;
   return
 };
