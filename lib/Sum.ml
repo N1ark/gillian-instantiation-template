@@ -5,8 +5,7 @@ open MyUtils
 open SymResult
 module DSR = DelayedSymResult
 
-module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
-  MyMonadicSMemory.S = struct
+module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) = struct
   type t = None | S1 of S1.t | S2 of S2.t [@@deriving show, yojson]
 
   module IDer = Identifier (IDs)
@@ -74,47 +73,45 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | None -> S2.empty ()
     | S1 _ -> failwith "MismatchedState"
 
+
+  let map_lift_1 f = function
+      | Ok x -> Ok (f x)
+      | LFail e -> LFail (E1 e)
+      | Miss m -> Miss (M1 m)
+
+  let map_lift_2 f = function
+      | Ok x -> Ok (f x)
+      | LFail e -> LFail (E2 e)
+      | Miss m -> Miss (M2 m)
+
+    let ( let+^ ) x f = Delayed.map x (map_lift_1 f)
+    let ( let+^^ ) x f = Delayed.map x (map_lift_2 f)
+
   let execute_action action s args =
-    let open Delayed.Syntax in
     let open DSR.Syntax in
     match action with
     | A1 action -> (
         let** s1 = get_s1 s in
-        let+ res = S1.execute_action action s1 args in
-        match res with
-        | Ok (s1', v) when S1.is_empty s1' -> Ok (None, v)
-        | Ok (s1', v) -> Ok (S1 s1', v)
-        | LFail e -> LFail (E1 e)
-        | Miss m -> Miss (M1 m))
+        let+^ (s1', v) = S1.execute_action action s1 args in
+        if S1.is_empty s1' then (None, v) else (S1 s1', v))
     | A2 action -> (
         let** s2 = get_s2 s in
-        let+ res = S2.execute_action action s2 args in
-        match res with
-        | Ok (s2', v) when S2.is_empty s2' -> Ok (None, v)
-        | Ok (s2', v) -> Ok (S2 s2', v)
-        | LFail e -> LFail (E2 e)
-        | Miss m -> Miss (M2 m))
+        let+^^ (s2', v) = S2.execute_action action s2 args in
+        if S2.is_empty s2' then (None, v) else (S2 s2', v))
 
   let consume pred s ins =
-    let open Delayed.Syntax in
     let open DSR.Syntax in
     match pred with
     | P1 pred -> (
         let** s1 = get_s1 s in
-        let+ res = S1.consume pred s1 ins in
-        match res with
-        | Ok (s1', outs) when S1.is_empty s1' -> Ok (None, outs)
-        | Ok (s1', outs) -> Ok (S1 s1', outs)
-        | LFail e -> LFail (E1 e)
-        | Miss m -> Miss (M1 m))
+        let+^ (s1', outs) = S1.consume pred s1 ins in
+        if S1.is_empty s1' then (None, outs)
+        else (S1 s1', outs))
     | P2 pred -> (
         let** s2 = get_s2 s in
-        let+ res = S2.consume pred s2 ins in
-        match res with
-        | Ok (s2', outs) when S2.is_empty s2' -> Ok (None, outs)
-        | Ok (s2', outs) -> Ok (S2 s2', outs)
-        | LFail e -> LFail (E2 e)
-        | Miss m -> Miss (M2 m))
+        let+^^ (s2', outs) = S2.consume pred s2 ins in
+        if S2.is_empty s2' then (None, outs)
+        else (S2 s2', outs))
 
   let produce pred s args =
     let open Delayed.Syntax in
@@ -185,7 +182,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   let get_recovery_tactic s = function
     | M1 m1 -> S1.get_recovery_tactic (get_s1_ex s) m1
     | M2 m2 -> S2.get_recovery_tactic (get_s2_ex s) m2
-    | MissingState -> failwith "get_recovery_tactic: missing state"
+    | MissingState -> Gillian.General.Recovery_tactic.none
 
   let get_fixes s pfs tenv =
     let fix_mapper f =
@@ -197,7 +194,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
         S1.get_fixes (get_s1_ex s) pfs tenv m1 |> fix_mapper (fun fx -> F1 fx)
     | M2 m2 ->
         S2.get_fixes (get_s2_ex s) pfs tenv m2 |> fix_mapper (fun fx -> F2 fx)
-    | MissingState -> failwith "get_fixes: missing state"
+    | MissingState -> []
 
   let apply_fix s =
     let open Delayed.Syntax in

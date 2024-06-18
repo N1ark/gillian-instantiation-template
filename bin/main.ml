@@ -9,6 +9,7 @@ module MList = MList.Make
 module Product = Product.Make
 module Sum = Sum.Make
 module Freeable = Freeable.Make
+module SFreeable = SFreeable.Make
 
 module IDs : MyUtils.IDs = struct
   let id1 = "left_"
@@ -16,7 +17,7 @@ module IDs : MyUtils.IDs = struct
 end
 
 (* Memory model definition *)
-module MyMem = PMap (LocationIndex) (Freeable (Exclusive))
+module MyMem = SFreeable (Exclusive)
 
 (* Debug *)
 module Debug = Debug.Make (MyMem)

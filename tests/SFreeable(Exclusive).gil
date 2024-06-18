@@ -1,0 +1,94 @@
+(* SFreeable (Exclusive) *)
+
+spec test_store(x)
+  [[ (x == #x) * <points_to>(;#any) ]]
+  [[ (ret == null) * <points_to>(;#x) ]]
+  normal
+proc test_store(x) {
+  e := [store](x);
+  ret := null;
+  return
+};
+
+spec test_invalid_store(x)
+  [[ (x == #x) ]]
+  [[ (ret == null) ]]
+  normal
+proc test_invalid_store(x) {
+  e := [store](x);
+  ret := null;
+  return
+};
+
+spec test_free()
+  [[ <points_to>(;#any) ]]
+  [[ (ret == null) * <freed>(;) ]]
+  normal
+proc test_free() {
+  e := [free]();
+  ret := null;
+  return
+};
+
+
+spec helper_test_free_spec_execution()
+  [[ <points_to>(;0i) ]]
+  [[ (ret == null) * <freed>(;) ]]
+  normal
+proc helper_test_free_spec_execution() {
+  e := [free]();
+  ret := null;
+  return
+};
+
+spec test_free_spec_execution()
+  [[ <points_to>(;0i) ]]
+  [[ (ret == null) * <freed>(;) ]]
+  normal
+proc test_free_spec_execution() {
+  e := "helper_test_free_spec_execution"();
+  ret := null;
+  return
+};
+
+spec test_invalid_free_no_resource()
+  [[ True ]]
+  [[ (ret == null) ]]
+  normal
+proc test_invalid_free_no_resource() {
+  e := [free]();
+  ret := null;
+  return
+};
+
+spec test_invalid_double_free()
+  [[ <points_to>(;#any) ]]
+  [[ (ret == null) ]]
+  normal
+proc test_invalid_double_free() {
+  e := [free]();
+  e := [free]();
+  ret := null;
+  return
+};
+
+spec test_load()
+  [[ (<points_to>(;#any)) ]]
+  [[ (ret == {{ #any }}) * <points_to>(;#any) ]]
+  normal
+proc test_load() {
+  x := [load]();
+  ret := x;
+  return
+};
+
+spec test_invalid_load_from_freed()
+  [[ <points_to>(;#any) ]]
+  [[ (ret == null) ]]
+  normal
+proc test_invalid_load_from_freed() {
+  e := [free]();
+  x := [load]();
+  ret := x;
+  return
+};

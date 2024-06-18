@@ -2,9 +2,11 @@ open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
-open SymResult
 module DSR = DelayedSymResult
 open MyUtils
+module SR = SymResult
+type ('a, 'e, 'm) sym_result = ('a, 'e, 'm) SymResult.sym_result
+
 
 (**
 List state model transformer. ALlows storing a list of symbolic states, indexed by an integer in
@@ -80,9 +82,9 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         let** idx, s = ExpMap.sym_find_res idx b ~miss:(MissingCell idx) in
         let+ r = S.execute_action action s args in
         match r with
-        | Ok (s', v) -> Ok ((ExpMap.add idx s' b, n), v)
-        | LFail e -> LFail (SubError (idx, e))
-        | Miss m -> Miss (SubMiss (idx, m)))
+        | Ok (s', v) -> SR.Ok ((ExpMap.add idx s' b, n), v)
+        | LFail e -> SR.LFail (SubError (idx, e))
+        | Miss m -> SR.Miss (SubMiss (idx, m)))
     | [] -> failwith "Missing index for sub-action"
 
   let consume pred (b, n) ins =
@@ -94,14 +96,14 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         let** idx, s = ExpMap.sym_find_res idx b ~miss:(MissingCell idx) in
         let+ r = S.consume p s ins in
         match r with
-        | Ok (s', outs) ->
+        | SR.Ok (s', outs) ->
             (* TODO: this smells fishy af, bc we sometimes remove it? but not always?
                but then get a missing if entry not found?
                Need to check how to distinguish missing entry from empty? *)
-            if S.is_empty s' then Ok ((ExpMap.remove idx b, n), outs)
-            else Ok ((ExpMap.add idx s' b, n), outs)
-        | LFail e -> LFail (SubError (idx, e))
-        | Miss m -> Miss (SubMiss (idx, m)))
+            if S.is_empty s' then SR.Ok ((ExpMap.remove idx b, n), outs)
+            else SR.Ok ((ExpMap.add idx s' b, n), outs)
+        | SR.LFail e -> SR.LFail (SubError (idx, e))
+        | SR.Miss m -> SR.Miss (SubMiss (idx, m)))
     | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
     | Length, [] -> (
         match n with
@@ -221,7 +223,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         let s = ExpMap.find idx b in
         let+ r = S.apply_fix s f in
         match r with
-        | Ok s' -> Ok (ExpMap.add idx s' b, n)
-        | LFail e -> LFail (SubError (idx, e))
-        | Miss m -> Miss (SubMiss (idx, m)))
+        | SR.Ok s' ->SR.Ok (ExpMap.add idx s' b, n)
+        | SR.LFail e -> SR.LFail (SubError (idx, e))
+        | SR.Miss m -> SR.Miss (SubMiss (idx, m)))
 end

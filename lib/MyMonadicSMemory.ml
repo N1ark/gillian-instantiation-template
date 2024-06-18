@@ -151,7 +151,9 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
   let get_recovery_tactic t e =
     match e with
     | Miss m -> get_recovery_tactic t m
-    | _ -> failwith "get_recovery_tactic: expected Miss"
+    | _ ->
+        Gillian.General.Recovery_tactic.none
+        (* failwith ("get_recovery_tactic: expected Miss, got " ^ (show_err_t e))*)
 
   let get_fixes t pfs tenv e =
     match e with
