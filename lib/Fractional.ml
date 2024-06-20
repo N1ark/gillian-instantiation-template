@@ -41,7 +41,7 @@ let execute_action action s args =
   | Load, Some (v, q), [] -> DR.ok (Some (v, q), [ v ])
   | Load, _, _ -> failwith "Invalid Load action"
   | Store, None, _ -> DR.error MissingState
-  | Store, Some (v, q), [ v' ] ->
+  | Store, Some (_, q), [ v' ] ->
       if%sat q #== (Expr.num 1.) then DR.ok (Some (v', q), [])
       else DR.error NotEnoughPermission
   | Store, _, _ -> failwith "Invalid Store action"
@@ -71,7 +71,6 @@ let produce core_pred s args =
   | Frac, _, _ -> failwith "Invalid PointsTo produce"
 
 let substitution_in_place subst s =
-  let open Delayed.Syntax in
   match s with
   | None -> Delayed.return None
   | Some (v, q) ->
@@ -91,7 +90,7 @@ let compose (s1 : t) (s2 : t) =
 
 let is_fully_owned = function
   | None -> Formula.False
-  | Some (v, q) -> Formula.Infix.(q #== (Expr.num 1.))
+  | Some (_, q) -> Formula.Infix.(q #== (Expr.num 1.))
 
 let is_empty = function
   | None -> true
@@ -103,26 +102,26 @@ let instantiate = function
 
 let lvars = function
   | None -> Containers.SS.empty
-  | Some (v, q) -> Expr.lvars v
+  | Some (v, _) -> Expr.lvars v
 
 let alocs = function
   | None -> Containers.SS.empty
-  | Some (v, q) -> Expr.alocs v
+  | Some (v, _) -> Expr.alocs v
 
 let assertions = function
   | None -> []
   | Some (v, q) -> [ (Frac, [ q ], [ v ]) ]
 
-let get_recovery_tactic (s : t) (e : err_t) : Values.t Recovery_tactic.t =
+let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
   match e with
   (* | MissingState -> Recovery_tactic.try_unfold ??? *)
   | _ -> Recovery_tactic.none
 
-let get_fixes s pfs tenv = function
+let get_fixes _ _ _ = function
   | _ -> []
 
 let can_fix = function
   | _ -> false
 
-let apply_fix s = function
+let apply_fix _ = function
   | _ -> Delayed.vanish ()

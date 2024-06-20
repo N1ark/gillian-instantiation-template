@@ -1,5 +1,4 @@
 open Gillian.Monadic
-open Gillian.Symbolic
 open Gil_syntax
 module Containers = Gillian.Utils.Containers
 open MyUtils

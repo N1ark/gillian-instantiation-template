@@ -50,7 +50,6 @@ let produce core_pred s args =
   | Agree, _, _ -> failwith "Invalid PointsTo produce"
 
 let substitution_in_place subst (heap : t) =
-  let open Delayed.Syntax in
   match heap with
   | None -> Delayed.return None
   | Some v ->
@@ -86,12 +85,12 @@ let assertions = function
   | None -> []
   | Some v -> [ (Agree, [], [ v ]) ]
 
-let get_recovery_tactic (s : t) (e : err_t) : Values.t Recovery_tactic.t =
+let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
   match e with
   (* | MissingState -> Recovery_tactic.try_unfold ??? *)
   | _ -> Recovery_tactic.none
 
-let get_fixes s pfs tenv = function
+let get_fixes _ _ _ = function
   | MissingState ->
       [
         (* TODO: ???????? *)
@@ -104,5 +103,5 @@ let get_fixes s pfs tenv = function
 let can_fix = function
   | MissingState -> true
 
-let apply_fix s = function
+let apply_fix _ = function
   | FAddState v -> DR.ok (Some v)

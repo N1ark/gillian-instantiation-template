@@ -87,12 +87,12 @@ module Defaults = struct
   let get_print_info _ _ = (Containers.SS.empty, Containers.SS.empty)
   let sure_is_nonempty _ = false
 
-  let get_failing_constraint e =
+  let get_failing_constraint _ =
     failwith "Implement here (get_failing_constraint)"
 
   let split_further _ _ _ _ = failwith "Implement here (split_further)"
-  let clean_up ?(keep = Expr.Set.empty) _ = failwith "Implement here (clean_up)"
-  let mem_constraints s = []
+  let clean_up ?keep:_ _ = failwith "Implement here (clean_up)"
+  let mem_constraints _ = []
 end
 
 module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
@@ -124,7 +124,7 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
     | Some pred -> produce pred state args
     | None -> failwith ("Predicate not found: " ^ core_pred)
 
-  let assertions ?to_keep s =
+  let assertions ?to_keep:_ s =
     let asrts = assertions s in
     List.map (fun (p, ins, outs) -> Asrt.GA (pred_to_str p, ins, outs)) asrts
 

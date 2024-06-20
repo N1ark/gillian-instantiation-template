@@ -54,7 +54,6 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let execute_action action s (args : Values.t list) :
       (t * Values.t list, err_t) DR.t =
     let open Delayed.Syntax in
-    let open DR.Syntax in
     match (action, s) with
     | SubAction a, SubState s -> (
         let+ r = S.execute_action a s args in
@@ -75,20 +74,19 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   let consume pred s ins =
     let open Delayed.Syntax in
-    let open DR.Syntax in
     match (pred, s) with
     | SubPred p, SubState s -> (
         let+ r = S.consume p s ins in
         match r with
         | Ok (s', outs) -> Ok (simplify s', outs)
         | Error e -> Error (SubError e))
-    | SubPred p, Freed -> DR.error UseAfterFree
+    | SubPred _, Freed -> DR.error UseAfterFree
     | SubPred p, None -> (
         let+ r = S.consume p (S.empty ()) ins in
         match r with
         | Ok (s', outs) -> Ok (simplify s', outs)
         | Error e -> Error (SubError e))
-    | FreedPred, SubState s -> DR.error UseAfterFree
+    | FreedPred, SubState _ -> DR.error UseAfterFree
     | FreedPred, Freed -> DR.ok (empty (), [])
     | FreedPred, None -> DR.error MissingResource
 

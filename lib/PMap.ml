@@ -144,7 +144,7 @@ struct
     let open Delayed.Syntax in
     let open DR.Syntax in
     match (action, args) with
-    | SubAction action, [] -> failwith "Missing index for sub-action"
+    | SubAction _, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args -> (
         let* r = validate_index (h, d) idx in
         let** (h, d), idx, s =
@@ -175,7 +175,7 @@ struct
     let open Delayed.Syntax in
     let open DR.Syntax in
     match (pred, ins) with
-    | SubPred pred, [] -> failwith "Missing index for sub-predicate"
+    | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
         let** idx, s = validate_index (h, d) idx in
         let+ r = S.consume pred s ins in
@@ -191,7 +191,7 @@ struct
   let produce pred (h, d) args =
     let open Delayed.Syntax in
     match (pred, args) with
-    | SubPred pred, [] -> failwith "Missing index for sub-predicate"
+    | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: args -> (
         let* r = validate_index (h, d) idx in
         match r with
@@ -229,12 +229,12 @@ struct
   let is_fully_owned =
     let open Formula.Infix in
     function
-    | h, Some d ->
+    | h, Some _ ->
         ExpMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s)) h Formula.True
-    | h, None -> Formula.False
+    | _, None -> Formula.False
 
   let is_empty = function
-    | h, Some _ -> false
+    | _, Some _ -> false
     | h, None -> ExpMap.for_all (fun _ s -> S.is_empty s) h
 
   let instantiate = function
@@ -271,16 +271,16 @@ struct
     | None -> alocs_map
     | Some d -> union alocs_map (Expr.alocs d)
 
-  let assertions (h, d) =
+  let assertions (h, _) =
     let pred_wrap k (p, i, o) = (SubPred p, k :: i, o) in
     let folder k s acc = (List.map (pred_wrap k)) (S.assertions s) @ acc in
     ExpMap.fold folder h []
 
-  let get_recovery_tactic (h, d) = function
+  let get_recovery_tactic (h, _) = function
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
     | _ -> Gillian.General.Recovery_tactic.none
 
-  let get_fixes (h, d) pfs tenv = function
+  let get_fixes (h, _) pfs tenv = function
     | SubError (idx, e) ->
         let fixes = S.get_fixes (ExpMap.find idx h) pfs tenv e in
         List.map

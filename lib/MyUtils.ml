@@ -1,6 +1,5 @@
 open Gillian.Utils
 open Gillian.Monadic
-open Gillian.Symbolic
 open Gil_syntax
 
 module type IDs = sig

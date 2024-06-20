@@ -53,7 +53,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   let empty () : t = (ExpMap.empty, None)
 
-  let validate_index (b, n) idx =
+  let validate_index (_, n) idx =
     let open Delayed.Syntax in
     let* idx = Delayed.reduce idx in
     match n with
@@ -85,7 +85,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         let** idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
         let+ r = S.consume p s ins in
         match r with
-        | Ok (s', outs) -> Ok ((ExpMap.remove idx b, n), outs)
+        | Ok (_, outs) -> Ok ((ExpMap.remove idx b, n), outs)
         | Error e -> Error (SubError (idx, e)))
     | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
     | Length, [] -> (
@@ -112,16 +112,16 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         | None -> Delayed.return (b, Some n'))
     | Length, _ -> failwith "Invalid arguments for length produce"
 
-  let compose s1 s2 = failwith "Not implemented"
+  let compose _ _ = failwith "Not implemented"
 
   let is_fully_owned =
     let open Formula.Infix in
     function
-    | b, Some n ->
+    | b, Some _ ->
         ExpMap.fold (fun _ v acc -> acc #&& (S.is_fully_owned v)) b Formula.True
     | _, None -> Formula.False
 
-  let is_empty s =
+  let is_empty _ =
     false (* TODO: can a list ever be empty?? no length & all elems empty? *)
 
   let instantiate = function
@@ -185,14 +185,14 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | Some n -> (Length, [], [ n ]) :: sub_asrts
     | None -> sub_asrts
 
-  let get_recovery_tactic (b, n) = function
+  let get_recovery_tactic (b, _) = function
     | SubError (idx, e) -> (
         match ExpMap.find_opt idx b with
         | Some s -> S.get_recovery_tactic s e
         | None -> failwith "Invalid index in get_recovery_tactic")
     | _ -> Gillian.General.Recovery_tactic.none
 
-  let get_fixes (b, n) pfs tenv = function
+  let get_fixes (b, _) pfs tenv = function
     | SubError (idx, e) ->
         let v = ExpMap.find idx b in
         let mapper (fs, fml, t, c) =
