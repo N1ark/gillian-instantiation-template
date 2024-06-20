@@ -1,7 +1,11 @@
 open Gillian
 open Instantiation
 
-(* Shortcuts *)
+(* Typings *)
+module type NameMap = Mapper.NameMap
+module type IDs = MyUtils.IDs
+
+(* Transformers *)
 module LocationIndex = PMap.LocationIndex
 module StringIndex = PMap.StringIndex
 module PMap = PMap.Make
@@ -9,8 +13,25 @@ module MList = MList.Make
 module Product = Product.Make
 module Sum = Sum.Make
 module Freeable = Freeable.Make
+module Mapper = Mapper.Make
 
-module IDs : MyUtils.IDs = struct
+module WISLSubst : NameMap = struct
+  let action_substitutions =
+    [
+      ("alloc", "alloc");
+      ("free", "dispose");
+      ("setcell", "load");
+      ("getcell", "store");
+    ]
+
+  let pred_substitutions =
+    [ ("points_to", "cell"); ("freed", "freed"); ("length", "bound") ]
+end
+
+module WISLMemory =
+  Mapper (WISLSubst) (PMap (LocationIndex) (Freeable (MList (Exclusive))))
+
+module IDs : IDs = struct
   let id1 = "left_"
   let id2 = "right_"
 end
