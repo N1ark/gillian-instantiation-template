@@ -9,7 +9,13 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   type t = S.t ExpMap.t * Expr.t option [@@deriving yojson]
 
   let pp fmt ((b, n) : t) =
-    Format.fprintf fmt "{ %a }, %a" (ExpMap.make_pp S.pp) b (pp_opt Expr.pp) n
+    Fmt.pf fmt "@[<v>BOUND: %a@ %a@]"
+      (Fmt.option ~none:(Fmt.any "NONE") Expr.pp)
+      n
+      (Fmt.braces @@ Fmt.vbox
+      @@ Fmt.iter_bindings ~sep:Fmt.sp ExpMap.iter
+      @@ fun ft (o, v) -> Fmt.pf ft "%a: %a" Expr.pp o S.pp v)
+      b
 
   let show s = Format.asprintf "%a" pp s
 
@@ -69,10 +75,14 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     match (action, args) with
     | SubAction a, idx :: args -> (
         let** () = validate_index (b, n) idx in
-        let** idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
+        let** b', idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
         let+ r = S.execute_action a s args in
         match r with
-        | Ok (s', v) -> Ok ((ExpMap.add idx s' b, n), v)
+        (* HACK: For WISL compat, index appendent to the output *)
+        | Ok (s', v) ->
+            Ok
+              ( (ExpMap.add idx s' b', n),
+                if List.is_empty v then v else idx :: v )
         | Error e -> Error (SubError (idx, e)))
     | SubAction _, [] -> failwith "Missing index for sub-action"
 
@@ -82,10 +92,11 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     match (pred, ins) with
     | SubPred p, idx :: ins -> (
         let** () = validate_index (b, n) idx in
-        let** idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
+        let** b', idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
         let+ r = S.consume p s ins in
         match r with
-        | Ok (_, outs) -> Ok ((ExpMap.remove idx b, n), outs)
+        | Ok (s, outs) when S.is_empty s -> Ok ((ExpMap.remove idx b', n), outs)
+        | Ok (s, outs) -> Ok ((ExpMap.add idx s b', n), outs)
         | Error e -> Error (SubError (idx, e)))
     | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
     | Length, [] -> (
@@ -99,9 +110,11 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     match (pred, args) with
     | SubPred p, idx :: args ->
         let*? _ = validate_index (b, n) idx in
-        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
-        let+ s' = S.produce p s args in
-        (ExpMap.add idx s' b, n)
+        let* b', idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
+        let* s' = S.produce p s args in
+        Delayed.return
+          ~learned:[ Formula.Infix.(idx #>= Expr.zero_i) ]
+          (ExpMap.add idx s' b', n)
     | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
     | Length, [ n' ] -> (
         match n with
@@ -112,7 +125,13 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         | None -> Delayed.return (b, Some n'))
     | Length, _ -> failwith "Invalid arguments for length produce"
 
-  let compose _ _ = failwith "Not implemented"
+  let compose s1 s2 =
+    match (s1, s2) with
+    | (b1, n), (b2, None) | (b1, None), (b2, n) ->
+        let open Delayed.Syntax in
+        let* b' = ExpMap.sym_merge S.compose b1 b2 in
+        Delayed.return (b', n)
+    | (_, Some _), (_, Some _) -> Delayed.vanish ()
 
   let is_fully_owned =
     let open Formula.Infix in
@@ -124,7 +143,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let is_empty _ =
     false (* TODO: can a list ever be empty?? no length & all elems empty? *)
 
-  let instantiate = function
+  let instantiate : Expr.t list -> t * Expr.t list = function
     | n :: args ->
         let length =
           match n with
@@ -133,10 +152,11 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         in
         let rec aux acc i =
           if i = length then acc
-          else aux (ExpMap.add (Expr.int i) (S.instantiate args) acc) (i + 1)
+          else
+            aux (ExpMap.add (Expr.int i) (fst (S.instantiate args)) acc) (i + 1)
         in
         let b = aux ExpMap.empty 0 in
-        (b, Some n)
+        ((b, Some n), [ Expr.zero_i ])
     | [] -> failwith "Invalid arguments for list instantiation"
 
   let substitution_in_place sub (b, n) =

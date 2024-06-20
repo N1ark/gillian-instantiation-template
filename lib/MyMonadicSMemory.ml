@@ -44,7 +44,7 @@ module type S = sig
 
   (* For PMap *)
   val is_empty : t -> bool
-  val instantiate : Expr.t list -> t
+  val instantiate : Expr.t list -> t * Expr.t list
 
   (* Core predicates: pred * ins * outs, converted to Asrt.GA *)
   val assertions : t -> (pred * Expr.t list * Expr.t list) list

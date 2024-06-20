@@ -94,7 +94,11 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     Formula.Infix.((S1.is_fully_owned s1) #&& (S2.is_fully_owned s2))
 
   let is_empty (s1, s2) = S1.is_empty s1 && S2.is_empty s2
-  let instantiate v = (S1.instantiate v, S2.instantiate v)
+
+  let instantiate v =
+    let s1, v1 = S1.instantiate v in
+    let s2, v2 = S2.instantiate v in
+    ((s1, s2), v1 @ v2)
   (* Maybe forbid it? *)
 
   let substitution_in_place st (s1, s2) =

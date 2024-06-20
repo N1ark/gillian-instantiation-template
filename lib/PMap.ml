@@ -30,17 +30,15 @@ module type PMapIndex = sig
 end
 
 module LocationIndex : PMapIndex = struct
-  open Allocators.Basic ()
-
   let mode = Static
 
   let is_valid_index = function
-    | Expr.Lit (Int _) | Expr.LVar _ -> Delayed.return true
+    | Expr.Lit (Loc _) | Expr.LVar _ -> Delayed.return true
     | _ -> Delayed.return false
 
   let make_fresh () =
-    let loc = alloc () in
-    Delayed.return (Expr.int loc)
+    let loc = ALoc.alloc () in
+    Delayed.return (Expr.Lit (Loc loc))
 
   let default_instantiation = []
 end
@@ -62,10 +60,10 @@ struct
 
   let pp fmt ((h, d) : t) =
     Format.pp_open_vbox fmt 0;
-    Format.fprintf fmt "PMap: { %a }\n" (ExpMap.make_pp S.pp) h;
+    Format.fprintf fmt "%a" (ExpMap.make_pp S.pp) h;
     (match d with
-    | None -> Format.fprintf fmt "DomainSet: None\n"
-    | Some d -> Format.fprintf fmt "DomainSet: %a\n" Expr.pp d);
+    | None -> ()
+    | Some d -> Format.fprintf fmt "DomainSet: %a" Expr.pp d);
     Format.pp_close_box fmt ()
 
   let show s = Format.asprintf "%a" pp s
@@ -131,7 +129,7 @@ struct
     else
       let* match_val = ExpMap.sym_find_opt idx h in
       match (match_val, d) with
-      | Some (idx, v), _ -> DR.ok (idx, v)
+      | Some (h', idx, v), _ -> DR.ok (h', idx, v)
       | None, None -> DR.error (MissingCell idx)
       | None, Some d ->
           if%sat Formula.SetMem (idx, d) then DR.error (NotAllocated idx)
@@ -149,10 +147,10 @@ struct
         let* r = validate_index (h, d) idx in
         let** (h, d), idx, s =
           match (r, I.mode) with
-          | Ok (idx, s), _ -> DR.ok ((h, d), idx, s)
+          | Ok (h', idx, s), _ -> DR.ok ((h', d), idx, s)
           (* In Dynamic mode, missing cells are instantiated to a default value *)
           | Error (MissingCell idx), Dynamic ->
-              let s = S.instantiate I.default_instantiation in
+              let s, _ = S.instantiate I.default_instantiation in
               let h' = ExpMap.add idx s h in
               let d' = modify_domain (fun d -> idx :: d) d in
               DR.ok ((h', d'), idx, s)
@@ -160,16 +158,20 @@ struct
         in
         let+ r = S.execute_action action s args in
         match r with
-        | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
+        (* HACK: For WISL compat, index appendent to the output *)
+        | Ok (s', v) ->
+            Ok
+              ( update_entry (h, d) idx s',
+                if List.is_empty v then v else idx :: v )
         | Error e -> Error (SubError (idx, e)))
     | Alloc, args ->
         if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
         else
           let+ idx = I.make_fresh () in
-          let s = S.instantiate args in
+          let s, v = S.instantiate args in
           let h' = ExpMap.add idx s h in
           let d' = modify_domain (fun d -> idx :: d) d in
-          Ok ((h', d'), [ idx ])
+          Ok ((h', d'), idx :: v)
 
   let consume pred (h, d) ins =
     let open Delayed.Syntax in
@@ -177,10 +179,10 @@ struct
     match (pred, ins) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
-        let** idx, s = validate_index (h, d) idx in
+        let** h', idx, s = validate_index (h, d) idx in
         let+ r = S.consume pred s ins in
         match r with
-        | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
+        | Ok (s', v) -> Ok (update_entry (h', d) idx s', v)
         | Error e -> Error (SubError (idx, e)))
     | DomainSet, [] -> (
         match d with
@@ -195,9 +197,9 @@ struct
     | SubPred pred, idx :: args -> (
         let* r = validate_index (h, d) idx in
         match r with
-        | Ok (idx, s) ->
+        | Ok (h', idx, s) ->
             let+ s' = S.produce pred s args in
-            update_entry (h, d) idx s'
+            update_entry (h', d) idx s'
         | Error (MissingCell idx) ->
             let s = S.empty () in
             let+ s' = S.produce pred s args in
@@ -238,7 +240,7 @@ struct
     | h, None -> ExpMap.for_all (fun _ s -> S.is_empty s) h
 
   let instantiate = function
-    | [] -> (ExpMap.empty, Some (Expr.ESet []))
+    | [] -> ((ExpMap.empty, Some (Expr.ESet [])), [])
     | _ -> failwith "Invalid arguments for instantiation"
 
   let substitution_in_place sub (h, d) =

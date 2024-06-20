@@ -19,13 +19,13 @@ module WISLSubst : NameMap = struct
   let action_substitutions =
     [
       ("alloc", "alloc");
-      ("free", "dispose");
-      ("setcell", "load");
-      ("getcell", "store");
+      ("dispose", "free");
+      ("setcell", "store");
+      ("getcell", "load");
     ]
 
   let pred_substitutions =
-    [ ("points_to", "cell"); ("freed", "freed"); ("length", "bound") ]
+    [ ("cell", "points_to"); ("freed", "freed"); ("bound", "length") ]
 end
 
 module WISLMemory =
@@ -37,12 +37,12 @@ module IDs : IDs = struct
 end
 
 (* Memory model definition *)
-module MyMem = PMap (LocationIndex) (Freeable (Exclusive))
+module MyMem = WISLMemory
 
 (* Debug *)
-module Debug = Debug.Make (MyMem)
+(* module Debug = Debug.Make (MyMem)
 
-let () = Debug.print_info ()
+   let () = Debug.print_info () *)
 
 (* Convert custom memory model -> Gillian memory model *)
 module PatchedMem = MyMonadicSMemory.Make (MyMem)

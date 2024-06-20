@@ -8,6 +8,11 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   type t = None | Freed | SubState of S.t [@@deriving yojson, show]
   type c_fix_t = SubFix of S.c_fix_t [@@deriving show]
 
+  let pp fmt = function
+    | None -> Fmt.string fmt "None"
+    | Freed -> Fmt.string fmt "Freed"
+    | SubState s -> S.pp fmt s
+
   type err_t =
     | DoubleFree
     | UseAfterFree
@@ -123,7 +128,9 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | Freed -> false
     | None -> true
 
-  let instantiate v = SubState (S.instantiate v)
+  let instantiate v =
+    let s, v = S.instantiate v in
+    (SubState s, v)
 
   let substitution_in_place sub s =
     let open Delayed.Syntax in

@@ -70,7 +70,7 @@ let is_empty = function
   | Some _ -> false
 
 let instantiate = function
-  | [ v ] -> Some v
+  | [ v ] -> (Some v, [])
   | _ -> failwith "Invalid Agreement instantiation"
 
 let lvars = function

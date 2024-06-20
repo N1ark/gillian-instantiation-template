@@ -25,36 +25,34 @@ module ExpMap = struct
   include Temp
 
   let sym_find_opt k m =
+    (* TODO: commented code doesn't seem to give any improvement. (slows down????) *)
+    (* let open Delayed.Syntax in *)
     match Temp.find_opt k m with
-    | Some v -> Delayed.return (Some (k, v)) (* Direct match *)
+    | Some v -> Delayed.return (Some (m, k, v)) (* Direct match *)
     | None ->
         let rec find_match = function
-          | [] -> Delayed.return None
-          | (k', v) :: tl ->
-              if%sat
-                Formula.Infix.(k' #== k)
-                (* TODO: reduce k, and replace it in the map.
-                   This means instead of returning idx * val, we'd return
-                   t * idx * val, with t the updated map containing the reduced idx.
-                   I'm not super sure it's needed though, since an index is always
-                   initially reduced before being inserted. *)
-              then Delayed.return (Some (k', v))
-              else find_match tl
+          | _, [] -> Delayed.return None
+          | m, (k', v) :: tl ->
+              (* let* k' = Delayed.reduce k' in *)
+              if%sat Formula.Infix.(k' #== k) then
+                (* let m' = Temp.add k' v (Temp.remove k m) in *)
+                Delayed.return (Some (m, k', v))
+              else find_match (m, tl)
         in
-        find_match (bindings m)
+        find_match (m, bindings m)
 
   let sym_find_default k m ~default =
     let open Delayed.Syntax in
     let* res = sym_find_opt k m in
     match res with
-    | Some (k, v) -> Delayed.return (k, v)
-    | None -> Delayed.return (k, default ())
+    | Some (m, k, v) -> Delayed.return (m, k, v)
+    | None -> Delayed.return (m, k, default ())
 
   let sym_find_res k m ~err =
     let open Delayed.Syntax in
     let+ res = sym_find_opt k m in
     match res with
-    | Some (k, v) -> Ok (k, v)
+    | Some (m, k, v) -> Ok (m, k, v)
     | None -> Error err
 
   (** Symbolically composes a map with a list of entries, composing entries when they
@@ -68,9 +66,9 @@ module ExpMap = struct
       let* m = m in
       let* r = sym_find_opt k m in
       match r with
-      | Some (k', v') ->
+      | Some (m', k', v') ->
           let+ v'' = compose v v' in
-          add k' v'' m
+          add k' v'' m'
       | None -> Delayed.return (add k v m)
     in
     List.fold_left compose_binding (Delayed.return m) l
@@ -78,12 +76,11 @@ module ExpMap = struct
   let sym_merge compose m1 m2 = sym_compose compose (bindings m2) m1
 
   let make_pp pp_v fmt m =
-    let pp_binding fmt (k, v) =
-      Format.fprintf fmt "%a -> %a" Expr.pp k pp_v v
-    in
-    Format.fprintf fmt "@[<hov 2>{%a}@]"
-      (Format.pp_print_list ?pp_sep:(Some Format.pp_force_newline) pp_binding)
-      (bindings m)
+    let pp_binding fmt (k, v) = Fmt.pf fmt "%a -> %a" Expr.pp k pp_v v in
+    Fmt.pf fmt "@[<v>%a@]"
+      ( Fmt.iter_bindings ~sep:(Fmt.any "@\n@\n") iter @@ fun ft b ->
+        pp_binding ft b )
+      m
 end
 
 let pp_opt pp_v fmt = function

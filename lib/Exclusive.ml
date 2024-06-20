@@ -11,6 +11,10 @@ type err_t = MissingState [@@deriving show, yojson]
 type action = Load | Store
 type pred = PointsTo
 
+let pp fmt = function
+  | None -> Fmt.string fmt "None"
+  | Some v -> Expr.pp fmt v
+
 let action_from_str = function
   | "load" -> Some Load
   | "store" -> Some Store
@@ -39,7 +43,10 @@ let execute_action action s args =
   | Load, _, _ -> failwith "Invalid Load action"
   | Store, None, _ -> DR.error MissingState
   | Store, Some _, [ v' ] -> DR.ok (Some v', [])
-  | Store, _, _ -> failwith "Invalid Store action"
+  | Store, _, _ ->
+      failwith
+        ("Invalid Store action, got args "
+        ^ Fmt.to_to_string (Fmt.Dump.list Values.pp) args)
 
 let consume core_pred s args =
   match (core_pred, s, args) with
@@ -50,9 +57,7 @@ let consume core_pred s args =
 let produce core_pred s args =
   match (core_pred, s, args) with
   | PointsTo, None, [ v ] -> Delayed.return (Some v)
-  | PointsTo, Some _, _ ->
-      Logging.normal (fun m -> m "Warning Exc: vanishing due to dup resource");
-      Delayed.vanish ()
+  | PointsTo, Some _, _ -> Delayed.vanish ()
   | PointsTo, _, _ -> failwith "Invalid PointsTo produce"
 
 let substitution_in_place subst (heap : t) =
@@ -64,8 +69,7 @@ let substitution_in_place subst (heap : t) =
 
 let compose s1 s2 =
   match (s1, s2) with
-  | None, _ -> Delayed.return s2
-  | _, None -> Delayed.return s1
+  | None, s | s, None -> Delayed.return s
   | _ -> Delayed.vanish ()
 
 let is_fully_owned = function
@@ -77,8 +81,8 @@ let is_empty = function
   | Some _ -> false
 
 let instantiate = function
-  | [] -> Some (Expr.int 0)
-  | [ v ] -> Some v (* maybe we don't want two options *)
+  | [] -> (Some (Expr.Lit Null), [])
+  | [ v ] -> (Some v, []) (* maybe we don't want two options *)
   | _ -> failwith "Invalid Excl instantiation"
 
 let lvars = function

@@ -17,10 +17,11 @@ let unsubst (substs : (string * string) list) (s : string) : string =
 
 module Make (Mapper : NameMap) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   include S
+  open Mapper
 
-  let action_from_str s = (subst Mapper.action_substitutions s) |> S.action_from_str
-  let action_to_str a = (S.action_to_str a) |> (unsubst Mapper.action_substitutions)
+  let action_from_str s = (subst action_substitutions s) |> S.action_from_str
+  let action_to_str a = (S.action_to_str a) |> (unsubst action_substitutions)
 
-  let pred_from_str s = (subst Mapper.pred_substitutions s) |> S.pred_from_str
-  let pred_to_str p = (S.pred_to_str p) |> (unsubst Mapper.pred_substitutions)
+  let pred_from_str s = (subst pred_substitutions s) |> S.pred_from_str
+  let pred_to_str p = (S.pred_to_str p) |> (unsubst pred_substitutions)
 end

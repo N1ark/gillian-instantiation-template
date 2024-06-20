@@ -97,7 +97,7 @@ let is_empty = function
   | Some _ -> false
 
 let instantiate = function
-  | [] -> Some (Expr.int 0, Expr.num 1.)
+  | [] -> (Some (Expr.int 0, Expr.num 1.), [])
   | _ -> failwith "Invalid Fractional instantiation"
 
 let lvars = function
