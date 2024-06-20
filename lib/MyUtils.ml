@@ -20,6 +20,13 @@ module Identifier (I : IDs) = struct
     else NotIDed s
 end
 
+let pp_bindings ~pp_k ~pp_v iter fmt m =
+  let pp_binding fmt (k, v) = Fmt.pf fmt "%a -> %a" pp_k k pp_v v in
+  Fmt.pf fmt "@[<v>%a@]"
+    ( Fmt.iter_bindings ~sep:(Fmt.any "@\n@\n") iter @@ fun ft b ->
+      pp_binding ft b )
+    m
+
 module ExpMap = struct
   module Temp = Prelude.Map.Make (Expr)
   include Temp
@@ -74,13 +81,7 @@ module ExpMap = struct
     List.fold_left compose_binding (Delayed.return m) l
 
   let sym_merge compose m1 m2 = sym_compose compose (bindings m2) m1
-
-  let make_pp pp_v fmt m =
-    let pp_binding fmt (k, v) = Fmt.pf fmt "%a -> %a" Expr.pp k pp_v v in
-    Fmt.pf fmt "@[<v>%a@]"
-      ( Fmt.iter_bindings ~sep:(Fmt.any "@\n@\n") iter @@ fun ft b ->
-        pp_binding ft b )
-      m
+  let make_pp pp_v = pp_bindings ~pp_k:Expr.pp ~pp_v iter
 end
 
 let pp_opt pp_v fmt = function

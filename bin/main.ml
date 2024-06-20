@@ -14,6 +14,7 @@ module Product = Product.Make
 module Sum = Sum.Make
 module Freeable = Freeable.Make
 module Mapper = Mapper.Make
+module WISLMap = WISLMap.Make
 
 module WISLSubst : NameMap = struct
   let action_substitutions =
@@ -28,8 +29,7 @@ module WISLSubst : NameMap = struct
     [ ("cell", "points_to"); ("freed", "freed"); ("bound", "length") ]
 end
 
-module WISLMemory =
-  Mapper (WISLSubst) (PMap (LocationIndex) (Freeable (MList (Exclusive))))
+module WISLMemory = Mapper (WISLSubst) (WISLMap (Freeable (MList (Exclusive))))
 
 module IDs : IDs = struct
   let id1 = "left_"

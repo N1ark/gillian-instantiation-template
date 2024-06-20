@@ -273,10 +273,13 @@ struct
     | None -> alocs_map
     | Some d -> union alocs_map (Expr.alocs d)
 
-  let assertions (h, _) =
+  let assertions (h, d) =
     let pred_wrap k (p, i, o) = (SubPred p, k :: i, o) in
     let folder k s acc = (List.map (pred_wrap k)) (S.assertions s) @ acc in
-    ExpMap.fold folder h []
+    let sub_assrts = ExpMap.fold folder h [] in
+    match d with
+    | None -> sub_assrts
+    | Some d -> (DomainSet, [], [ d ]) :: sub_assrts
 
   let get_recovery_tactic (h, _) = function
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
