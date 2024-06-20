@@ -66,15 +66,18 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let empty () : t = SMap.empty
 
   let validate_index (h : t) idx =
-    let open Delayed.Syntax in
-    let* idx' = Delayed.resolve_loc idx in
-    match idx' with
-    | None -> DR.error (InvalidIndexValue idx)
-    | Some idx' -> (
-        let match_val = SMap.find_opt idx' h in
-        match match_val with
-        | Some v -> DR.ok (idx', v)
-        | None -> DR.error (MissingCell idx'))
+    match idx with
+    | Expr.Lit (Loc idx) | Expr.ALoc idx -> DR.ok (idx, SMap.find idx h)
+    | _ -> (
+        let open Delayed.Syntax in
+        let* idx' = Delayed.resolve_loc idx in
+        match idx' with
+        | None -> DR.error (InvalidIndexValue idx)
+        | Some idx' -> (
+            let match_val = SMap.find_opt idx' h in
+            match match_val with
+            | Some v -> DR.ok (idx', v)
+            | None -> DR.error (MissingCell idx')))
 
   let update_entry h idx s =
     if S.is_empty s then SMap.remove idx h else SMap.add idx s h
