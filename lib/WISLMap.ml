@@ -158,7 +158,10 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     let open Delayed.Syntax in
     let mapper (idx, s) =
       let+ s' = S.substitution_in_place sub s in
-      (idx, s')
+      let idx' = Subst.get sub (Expr.loc_from_loc_name idx) in
+      match idx' with
+      | Some (Expr.Lit (Loc idx')) | Some (Expr.ALoc idx') -> (idx', s')
+      | _ -> (idx, s')
     in
     let map_entries = SMap.bindings h in
     let subst_entries = List.map mapper map_entries in
