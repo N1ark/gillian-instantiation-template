@@ -5,9 +5,11 @@ open Instantiation
 module type NameMap = Mapper.NameMap
 module type IDs = MyUtils.IDs
 
-(* Transformers *)
+(* Indices *)
 module LocationIndex = PMap.LocationIndex
 module StringIndex = PMap.StringIndex
+
+(* Transformers *)
 module PMap = PMap.Make
 module MList = MList.Make
 module Product = Product.Make
