@@ -27,7 +27,27 @@ let pp_bindings ~pp_k ~pp_v iter fmt m =
       pp_binding ft b )
     m
 
-module ExpMap = struct
+module type SymExprMap = sig
+  include Prelude.Map.S with type key = Expr.t
+
+  val sym_find_opt : key -> 'a t -> ('a t * key * 'a) option Delayed.t
+
+  val sym_find_default :
+    key -> 'a t -> default:(unit -> 'a) -> ('a t * key * 'a) Delayed.t
+
+  val sym_find_res :
+    key -> 'a t -> err:'b -> ('a t * key * 'a, 'b) result Delayed.t
+
+  val sym_compose :
+    ('a -> 'a -> 'a Delayed.t) -> (Expr.t * 'a) list -> 'a t -> 'a t Delayed.t
+
+  val sym_merge : ('a -> 'a -> 'a Delayed.t) -> 'a t -> 'a t -> 'a t Delayed.t
+
+  val make_pp :
+    (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
+end
+
+module ExpMap : SymExprMap = struct
   module Temp = Prelude.Map.Make (Expr)
   include Temp
 
@@ -82,6 +102,31 @@ module ExpMap = struct
 
   let sym_merge compose m1 m2 = sym_compose compose (bindings m2) m1
   let make_pp pp_v = pp_bindings ~pp_k:Expr.pp ~pp_v iter
+end
+
+(**
+  Same as [ExpMap] but with the [sym_find_opt] function using entailement instead of
+  satifiability.
+*)
+module ExpMapEnt : SymExprMap = struct
+  include ExpMap
+
+  let sym_find_opt k m =
+    (* TODO: commented code doesn't seem to give any improvement. (slows down????) *)
+    (* let open Delayed.Syntax in *)
+    match find_opt k m with
+    | Some v -> Delayed.return (Some (m, k, v)) (* Direct match *)
+    | None ->
+        let rec find_match = function
+          | _, [] -> Delayed.return None
+          | m, (k', v) :: tl ->
+              (* let* k' = Delayed.reduce k' in *)
+              if%ent Formula.Infix.(k' #== k) then
+                (* let m' = Temp.add k' v (Temp.remove k m) in *)
+                Delayed.return (Some (m, k', v))
+              else find_match (m, tl)
+        in
+        find_match (m, bindings m)
 end
 
 let pp_opt pp_v fmt = function

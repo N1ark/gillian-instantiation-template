@@ -10,6 +10,7 @@ module LocationIndex = PMap.LocationIndex
 module StringIndex = PMap.StringIndex
 
 (* Transformers *)
+module PMapEnt = PMap.MakeEnt
 module PMap = PMap.Make
 module MList = MList.Make
 module Product = Product.Make
@@ -39,7 +40,7 @@ module IDs : IDs = struct
 end
 
 (* Memory model definition *)
-module MyMem = WISLMemory
+module MyMem = Mapper (WISLSubst) (PMapEnt (LocationIndex) (Freeable (MList (Exclusive))))
 
 (* Debug *)
 (* module Debug = Debug.Make (MyMem)

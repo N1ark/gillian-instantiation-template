@@ -3,7 +3,6 @@ open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
 module DR = Delayed_result
-open MyUtils
 
 type index_mode = Static | Dynamic
 
@@ -56,8 +55,10 @@ module StringIndex : PMapIndex = struct
   let default_instantiation = []
 end
 
-module Make (I : PMapIndex) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S =
-struct
+module Make_
+    (I : PMapIndex)
+    (S : MyMonadicSMemory.S)
+    (ExpMap : MyUtils.SymExprMap) : MyMonadicSMemory.S = struct
   type t = S.t ExpMap.t * Expr.t option [@@deriving yojson]
 
   let pp fmt ((h, d) : t) =
@@ -318,3 +319,9 @@ struct
         | Ok s' -> Ok (ExpMap.add idx s' h, d)
         | Error e -> Error (SubError (idx, e)))
 end
+
+module Make (I : PMapIndex) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S =
+  Make_ (I) (S) (MyUtils.ExpMap)
+
+module MakeEnt (I : PMapIndex) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S =
+  Make_ (I) (S) (MyUtils.ExpMapEnt)
