@@ -78,9 +78,9 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         | None -> DR.error (InvalidIndexValue idx)
         | Some idx' -> (
             let idx' = Expr.loc_from_loc_name idx' in
-            let match_val = ExpMap.find_opt idx' h in
+            let* match_val = ExpMap.sym_find_opt idx' h in
             match match_val with
-            | Some v -> DR.ok (idx', v)
+            | Some (_, idx', v) -> DR.ok (idx', v)
             | None -> DR.error (MissingCell idx')))
 
   let update_entry h idx s =
@@ -156,18 +156,13 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let substitution_in_place sub h =
     let open Delayed.Syntax in
     let mapper (idx, s) =
-      let idx' = Subst.subst_in_expr ~partial:true sub idx in
       let+ s' = S.substitution_in_place sub s in
+      let idx' = Subst.subst_in_expr sub idx ~partial:true in
       (idx', s')
     in
     let map_entries = ExpMap.bindings h in
-    let subst_entries = List.map mapper map_entries in
-    let folder acc binding =
-      let* acc = acc in
-      let+ idx, s = binding in
-      ExpMap.add idx s acc
-    in
-    List.fold_left folder (Delayed.return ExpMap.empty) subst_entries
+    let* sub_entries = Delayed.all (List.map mapper map_entries) in
+    ExpMap.sym_compose S.compose sub_entries ExpMap.empty
 
   let lvars h =
     let open Containers.SS in

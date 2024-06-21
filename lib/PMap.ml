@@ -19,11 +19,12 @@ type index_mode = Static | Dynamic
 module type PMapIndex = sig
   val mode : index_mode
 
-  (** If the given expression is a valid index for the map *)
-  val is_valid_index : Expr.t -> bool Delayed.t
+  (** If the given expression is a valid index for the map.
+      Returns a possibly simplified index, and None if it's not valid.  *)
+  val is_valid_index : Expr.t -> Expr.t option Delayed.t
 
   (** Creates a new address, for allocating new state. Only used in static mode *)
-  val make_fresh : unit -> Expr.t Delayed.t
+  val make_fresh : unit -> Expr.t
 
   (** The arguments used when instantiating new state. Only used in dynamic mode *)
   val default_instantiation : Expr.t list
@@ -33,12 +34,13 @@ module LocationIndex : PMapIndex = struct
   let mode = Static
 
   let is_valid_index = function
-    | Expr.Lit (Loc _) | Expr.LVar _ -> Delayed.return true
-    | _ -> Delayed.return false
+    | (Expr.Lit (Loc _) | Expr.ALoc _) as l -> Delayed.return (Some l)
+    | e ->
+        Delayed.map (Delayed.resolve_loc e) (Option.map Expr.loc_from_loc_name)
 
   let make_fresh () =
     let loc = ALoc.alloc () in
-    Delayed.return (Expr.Lit (Loc loc))
+    Expr.loc_from_loc_name loc
 
   let default_instantiation = []
 end
@@ -47,8 +49,8 @@ module StringIndex : PMapIndex = struct
   let mode = Dynamic
 
   let is_valid_index = function
-    | Expr.Lit (String _) -> Delayed.return true
-    | _ -> Delayed.return false
+    | Expr.Lit (String _) as l -> Delayed.return (Some l)
+    | _ -> Delayed.return None
 
   let make_fresh () = failwith "Not implemented (StringIndex.make_fresh)"
   let default_instantiation = []
@@ -124,16 +126,17 @@ struct
 
   let validate_index ((h, d) : t) idx =
     let open Delayed.Syntax in
-    let* valid_idx = I.is_valid_index idx in
-    if valid_idx = false then DR.error (InvalidIndexValue idx)
-    else
-      let* match_val = ExpMap.sym_find_opt idx h in
-      match (match_val, d) with
-      | Some (h', idx, v), _ -> DR.ok (h', idx, v)
-      | None, None -> DR.error (MissingCell idx)
-      | None, Some d ->
-          if%sat Formula.SetMem (idx, d) then DR.error (MissingCell idx)
-          else DR.error (NotAllocated idx)
+    let* idx' = I.is_valid_index idx in
+    match idx' with
+    | None -> DR.error (InvalidIndexValue idx)
+    | Some idx' -> (
+        let* match_val = ExpMap.sym_find_opt idx' h in
+        match (match_val, d) with
+        | Some (h', idx'', v), _ -> DR.ok (h', idx'', v)
+        | None, None -> DR.error (MissingCell idx')
+        | None, Some d ->
+            if%sat Formula.SetMem (idx', d) then DR.error (MissingCell idx')
+            else DR.error (NotAllocated idx'))
 
   let update_entry (h, d) idx s =
     if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d)
@@ -167,11 +170,11 @@ struct
     | Alloc, args ->
         if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
         else
-          let+ idx = I.make_fresh () in
+          let idx = I.make_fresh () in
           let s, v = S.instantiate args in
           let h' = ExpMap.add idx s h in
           let d' = modify_domain (fun d -> idx :: d) d in
-          Ok ((h', d'), idx :: v)
+          DR.ok ((h', d'), idx :: v)
 
   let consume pred (h, d) ins =
     let open Delayed.Syntax in
@@ -204,6 +207,13 @@ struct
             let s = S.empty () in
             let+ s' = S.produce pred s args in
             update_entry (h, d) idx s'
+        | Error (InvalidIndexValue v) ->
+            let s = S.empty () in
+            let loc = I.make_fresh () in
+            let* s' = S.produce pred s args in
+            Delayed.return
+              ~learned:[ Formula.Infix.(loc #== v) ]
+              (update_entry (h, d) loc s')
         | Error _ ->
             Logging.normal (fun m ->
                 m "Warning PMap: vanishing due to invalid index");
