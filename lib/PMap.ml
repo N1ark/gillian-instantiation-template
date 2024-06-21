@@ -132,8 +132,8 @@ struct
       | Some (h', idx, v), _ -> DR.ok (h', idx, v)
       | None, None -> DR.error (MissingCell idx)
       | None, Some d ->
-          if%sat Formula.SetMem (idx, d) then DR.error (NotAllocated idx)
-          else DR.error (MissingCell idx)
+          if%sat Formula.SetMem (idx, d) then DR.error (MissingCell idx)
+          else DR.error (NotAllocated idx)
 
   let update_entry (h, d) idx s =
     if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d)

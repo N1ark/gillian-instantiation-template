@@ -64,8 +64,8 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     let* idx = Delayed.reduce idx in
     match n with
     | Some n ->
-        if%sat Formula.Infix.(idx #>= n) then DR.error (OutOfBounds (idx, n))
-        else DR.ok ()
+        if%sat Formula.Infix.(Expr.zero_i #<= idx #&& (idx #< n)) then DR.ok ()
+        else DR.error (OutOfBounds (idx, n))
     | None -> DR.ok ()
 
   let execute_action action ((b, n) : t) (args : Values.t list) :
@@ -112,9 +112,7 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
         let*? _ = validate_index (b, n) idx in
         let* b', idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
         let* s' = S.produce p s args in
-        Delayed.return
-          ~learned:[ Formula.Infix.(idx #>= Expr.zero_i) ]
-          (ExpMap.add idx s' b', n)
+        Delayed.return (ExpMap.add idx s' b', n)
     | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
     | Length, [ n' ] -> (
         match n with
