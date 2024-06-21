@@ -1,6 +1,7 @@
 open Gillian.Utils
 open Gillian.Monadic
 open Gil_syntax
+module Subst = Gillian.Symbolic.Subst
 module DR = Delayed_result
 
 module MyString = struct
@@ -67,7 +68,10 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
 
   let validate_index (h : t) idx =
     match idx with
-    | Expr.Lit (Loc idx) | Expr.ALoc idx -> DR.ok (idx, SMap.find idx h)
+    | Expr.Lit (Loc idx) | Expr.ALoc idx -> (
+        match SMap.find_opt idx h with
+        | Some v -> DR.ok (idx, v)
+        | None -> DR.error (MissingCell idx))
     | _ -> (
         let open Delayed.Syntax in
         let* idx' = Delayed.resolve_loc idx in
@@ -153,8 +157,15 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
   let substitution_in_place sub h =
     let open Delayed.Syntax in
     let mapper (idx, s) =
+      let idx = Expr.loc_from_loc_name idx in
+      let idx' = Subst.subst_in_expr ~partial:true sub idx in
+      let* idx' =
+        match idx' with
+        | Expr.ALoc idx | Expr.Lit (Loc idx) -> Delayed.return idx
+        | _ -> Delayed.vanish ()
+      in
       let+ s' = S.substitution_in_place sub s in
-      (idx, s')
+      (idx', s')
     in
     let map_entries = SMap.bindings h in
     let subst_entries = List.map mapper map_entries in
