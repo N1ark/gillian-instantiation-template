@@ -47,7 +47,11 @@ let produce core_pred s args =
   match (core_pred, s, args) with
   | Agree, None, [ v' ] -> Delayed.return (Some v')
   | Agree, Some v, [ v' ] -> Delayed.return ~learned:[ v #== v' ] (Some v)
-  | Agree, _, _ -> failwith "Invalid PointsTo produce"
+  | Agree, _, _ ->
+      failwith
+        (Fmt.str "Invalid Agree produce, got args [%a]"
+           (Fmt.list ~sep:Fmt.comma Expr.pp)
+           args)
 
 let substitution_in_place subst (heap : t) =
   match heap with

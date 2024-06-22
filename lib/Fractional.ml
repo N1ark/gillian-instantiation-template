@@ -68,7 +68,7 @@ let produce core_pred s args =
       Delayed.return
         ~learned:[ v #== v'; (q +. q') #<=. (Expr.num 1.) ]
         (Some (v, q +. q'))
-  | Frac, _, _ -> failwith "Invalid PointsTo produce"
+  | Frac, _, _ -> failwith "Invalid Frac produce"
 
 let substitution_in_place subst s =
   match s with

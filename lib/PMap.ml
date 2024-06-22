@@ -32,14 +32,21 @@ end
 module LocationIndex : PMapIndex = struct
   let mode = Static
 
-  let is_valid_index = function
-    | (Expr.Lit (Loc _) | Expr.ALoc _) as l -> Delayed.return (Some l)
-    | e ->
-        Delayed.map (Delayed.resolve_loc e) (Option.map Expr.loc_from_loc_name)
-
   let make_fresh () =
     let loc = ALoc.alloc () in
     Expr.loc_from_loc_name loc
+
+  let is_valid_index = function
+    | (Expr.Lit (Loc _) | Expr.ALoc _) as l -> Delayed.return (Some l)
+    | e -> (
+        let open Delayed.Syntax in
+        let* loc = Delayed.resolve_loc e in
+        match loc with
+        | Some l -> Delayed.return (Some (Expr.loc_from_loc_name l))
+        | None ->
+            let loc = make_fresh () in
+            if%sat Formula.Infix.(loc #== e) then Delayed.return (Some loc)
+            else Delayed.return None)
 
   let default_instantiation = []
 end
@@ -51,7 +58,7 @@ module StringIndex : PMapIndex = struct
     | Expr.Lit (String _) as l -> Delayed.return (Some l)
     | _ -> Delayed.return None
 
-  let make_fresh () = failwith "Not implemented (StringIndex.make_fresh)"
+  let make_fresh () = Expr.LVar (LVar.alloc ())
   let default_instantiation = []
 end
 
@@ -208,13 +215,6 @@ module Make_
             let s = S.empty () in
             let+ s' = S.produce pred s args in
             update_entry (h, d) idx s'
-        | Error (InvalidIndexValue v) ->
-            let s = S.empty () in
-            let loc = I.make_fresh () in
-            let* s' = S.produce pred s args in
-            Delayed.return
-              ~learned:[ Formula.Infix.(loc #== v) ]
-              (update_entry (h, d) loc s')
         | Error _ ->
             Logging.normal (fun m ->
                 m "Warning PMap: vanishing due to invalid index");
