@@ -81,7 +81,7 @@ let is_empty = function
   | Some _ -> false
 
 let instantiate = function
-  | [] -> (Some (Expr.Lit Null), [])
+  | [] -> (Some (Expr.Lit Undefined), [])
   | [ v ] -> (Some v, []) (* maybe we don't want two options *)
   | _ -> failwith "Invalid Excl instantiation"
 

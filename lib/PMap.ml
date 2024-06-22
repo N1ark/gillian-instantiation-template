@@ -38,15 +38,15 @@ module LocationIndex : PMapIndex = struct
 
   let is_valid_index = function
     | (Expr.Lit (Loc _) | Expr.ALoc _) as l -> Delayed.return (Some l)
-    | e -> (
+    | Expr.LVar _ as e -> (
         let open Delayed.Syntax in
         let* loc = Delayed.resolve_loc e in
         match loc with
         | Some l -> Delayed.return (Some (Expr.loc_from_loc_name l))
         | None ->
-            let loc = make_fresh () in
-            if%sat Formula.Infix.(loc #== e) then Delayed.return (Some loc)
-            else Delayed.return None)
+            let loc' = make_fresh () in
+            Delayed.return ~learned:[ Formula.Infix.(loc' #== e) ] (Some loc'))
+    | _ -> Delayed.return None
 
   let default_instantiation = []
 end
@@ -55,10 +55,9 @@ module StringIndex : PMapIndex = struct
   let mode = Dynamic
 
   let is_valid_index = function
-    | Expr.Lit (String _) as l -> Delayed.return (Some l)
-    | _ -> Delayed.return None
+    | l -> Delayed.return (Some l)
 
-  let make_fresh () = Expr.LVar (LVar.alloc ())
+  let make_fresh () = failwith "Invalid in dynamic mode"
   let default_instantiation = []
 end
 
