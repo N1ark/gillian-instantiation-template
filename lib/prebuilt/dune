@@ -1,0 +1,8 @@
+(library
+ (name prebuilt)
+ (public_name instantiation.prebuilt)
+ (libraries
+  states
+  gillian
+  gillian-js-libs.js2jsil_lib
+  gillian-js-libs.semantics))

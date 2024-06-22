@@ -1,8 +1,4 @@
 (executable
  (public_name instantiation)
  (name main)
- (libraries
-  instantiation
-  gillian
-  gillian-js-libs.js2jsil_lib
-  gillian-js-libs.semantics))
+ (libraries prebuilt states gillian))
