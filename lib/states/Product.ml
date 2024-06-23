@@ -4,8 +4,13 @@ module Containers = Gillian.Utils.Containers
 open MyUtils
 
 module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
-  MyMonadicSMemory.S = struct
-  type t = S1.t * S2.t [@@deriving show, yojson]
+  MyMonadicSMemory.S with type t = S1.t * S2.t = struct
+  type t = S1.t * S2.t [@@deriving yojson]
+
+  let pp fmt (s1, s2) =
+    Fmt.pf fmt "Product (@[<h>%a@]@\n) x (@[<h>%a@])" S1.pp s1 S2.pp s2
+
+  let show s = Format.asprintf "%a" pp s
 
   module IDer = Identifier (IDs)
 

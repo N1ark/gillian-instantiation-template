@@ -15,7 +15,7 @@ let unsubst (substs : (string * string) list) (s : string) : string =
   | Some (before, _) -> before
   | None -> s
 
-module Make (Mapper : NameMap) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
+module Make (Mapper : NameMap) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S with type t = S.t = struct
   include S
   open Mapper
 

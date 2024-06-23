@@ -4,9 +4,11 @@ open Gil_syntax
 open MyUtils
 module DR = Delayed_result
 
+type ('l, 'r) sum = None | S1 of 'l | S2 of 'r [@@deriving show, yojson]
+
 module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
-  MyMonadicSMemory.S = struct
-  type t = None | S1 of S1.t | S2 of S2.t [@@deriving show, yojson]
+  MyMonadicSMemory.S with type t = (S1.t, S2.t) sum = struct
+  type t = (S1.t, S2.t) sum [@@deriving show, yojson]
 
   module IDer = Identifier (IDs)
 

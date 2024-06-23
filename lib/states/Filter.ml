@@ -7,7 +7,7 @@ module type FilterVals = sig
 end
 
 module Make (Filter : FilterVals) (S : MyMonadicSMemory.S) :
-  MyMonadicSMemory.S = struct
+  MyMonadicSMemory.S with type t = S.t = struct
   include S
 
   let filter =

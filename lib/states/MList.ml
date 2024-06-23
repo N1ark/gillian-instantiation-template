@@ -5,7 +5,8 @@ open Gil_syntax
 module DR = Delayed_result
 open MyUtils
 
-module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
+module Make (S : MyMonadicSMemory.S) :
+  MyMonadicSMemory.S with type t = S.t ExpMap.t * Expr.t option = struct
   type t = S.t ExpMap.t * Expr.t option [@@deriving yojson]
 
   let pp fmt ((b, n) : t) =

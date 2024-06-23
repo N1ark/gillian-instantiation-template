@@ -1,5 +1,7 @@
 open Gillian.Monadic
+open Gil_syntax
 open Utils
+open Delayed.Syntax
 
 (* Helpers *)
 module JSSubst : NameMap = struct
@@ -7,7 +9,7 @@ module JSSubst : NameMap = struct
     [
       ("GetCell", "left_load");
       ("SetCell", "left_store");
-      ("Alloc", "left_alloc");
+      ("Alloc", "right_alloc");
       ("GetMetadata", "right_load");
     ]
 
@@ -36,12 +38,50 @@ end
 module ParserAndCompiler = Js2jsil_lib.JS2GIL_ParserAndCompiler
 module ExternalSemantics = Semantics.External
 
-module BaseMemory =
-  Product
-    (IDs)
-    (PMap
-       (LocationIndex)
-       (Mapper (JSSubstInner) (PMap (StringIndex) (Exclusive))))
-    (PMap (LocationIndex) (Agreement))
+module ProdL =
+  PMap (LocationIndex) (Mapper (JSSubstInner) (PMap (StringIndex) (Exclusive)))
 
-module MonadicSMemory = Filter (JSFilter) (Mapper (JSSubst) (BaseMemory))
+module ProdR = PMap (LocationIndex) (Agreement)
+module BaseMemory = Product (IDs) (ProdL) (ProdR)
+
+module JSInjection : Injection with type t = BaseMemory.t = struct
+  type t = BaseMemory.t
+
+  let ret = Delayed.return ?learned:None ?learned_types:None
+  let pre_produce _ = ret
+  let pre_consume _ = ret
+  let post_consume _ = ret
+
+  let pre_execute_action action =
+    match action with
+    | "Alloc" -> (
+        function
+        (* Allocations are given two parameters, [empty; ###], we can ignore
+           the empty and pass the second value wich is the metadata location *)
+        | s, Expr.Lit Empty :: args | s, args -> ret (s, args))
+    | _ -> ret
+
+  let post_execute_action action ((l, r), rets) =
+    match (action, rets) with
+    | "Alloc", [ loc ] -> (
+        (* After allocating on the right side, allocate on the address map as well *)
+        let action = Option.get (ProdL.action_from_str "alloc") in
+        let* res = ProdL.execute_action action l [] in
+        match res with
+        (* Ensuring the allocated address is the same as for the metadata! *)
+        | Ok (l', [ loc' ]) ->
+            Delayed.return
+              ~learned:[ Formula.Infix.(loc #== loc') ]
+              ((l', r), rets)
+        | Ok (l', _) -> ret ((l', r), rets)
+        (* Shouldn't happen – don't have better way of handling atm *)
+        | _ ->
+            Format.printf
+              "Error in post_execute_action Alloc: generated %a, is ok? %b"
+              Expr.pp loc (Result.is_ok res);
+            Delayed.vanish ())
+    | _, _ -> ret ((l, r), rets)
+end
+
+module MonadicSMemory =
+  Filter (JSFilter) (Injector (JSInjection) (Mapper (JSSubst) (BaseMemory)))

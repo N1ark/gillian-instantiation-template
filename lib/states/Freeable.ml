@@ -4,8 +4,11 @@ open Gillian.Symbolic
 open Gil_syntax
 module DR = Delayed_result
 
-module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
-  type t = None | Freed | SubState of S.t [@@deriving yojson, show]
+type 'a freeable = None | Freed | SubState of 'a [@@deriving yojson, show]
+
+module Make (S : MyMonadicSMemory.S) :
+  MyMonadicSMemory.S with type t = S.t freeable = struct
+  type t = S.t freeable [@@deriving yojson, show]
   type c_fix_t = SubFix of S.c_fix_t [@@deriving show]
 
   let pp fmt = function

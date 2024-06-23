@@ -64,16 +64,17 @@ end
 module Make_
     (I : PMapIndex)
     (S : MyMonadicSMemory.S)
-    (ExpMap : MyUtils.SymExprMap) : MyMonadicSMemory.S = struct
+    (ExpMap : MyUtils.SymExprMap) :
+  MyMonadicSMemory.S with type t = S.t ExpMap.t * Expr.t option = struct
   type t = S.t ExpMap.t * Expr.t option [@@deriving yojson]
 
   let pp fmt ((h, d) : t) =
     Format.pp_open_vbox fmt 0;
     Format.fprintf fmt "%a" (ExpMap.make_pp S.pp) h;
-    (match d with
-    | None -> ()
-    | Some d -> Format.fprintf fmt "DomainSet: %a" Expr.pp d);
-    Format.pp_close_box fmt ()
+    Format.pp_close_box fmt ();
+    match d with
+    | None -> Format.fprintf fmt "@\nDomainSet: None"
+    | Some d -> Format.fprintf fmt "@\nDomainSet: %a" Expr.pp d
 
   let show s = Format.asprintf "%a" pp s
 

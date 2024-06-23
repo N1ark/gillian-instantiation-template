@@ -17,7 +17,8 @@ end
 module SMap = Prelude.Map.Make (MyString)
 
 (** Similar to PMap, but only supports GIL abstract locations. *)
-module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
+module Make (S : MyMonadicSMemory.S) :
+  MyMonadicSMemory.S with type t = S.t SMap.t = struct
   type t = S.t SMap.t [@@deriving yojson]
 
   let pp fmt (h : t) =

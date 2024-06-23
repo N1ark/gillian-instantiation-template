@@ -1,6 +1,7 @@
 open Gil_syntax
 
-module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
+module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S with type t = S.t =
+struct
   include S
 
   let log =
