@@ -4,5 +4,8 @@
  (libraries
   states
   gillian
+  gillian.ppx_sat.runtime
   gillian-js-libs.js2jsil_lib
-  gillian-js-libs.semantics))
+  gillian-js-libs.semantics)
+ (preprocess
+  (pps gillian.ppx_sat)))

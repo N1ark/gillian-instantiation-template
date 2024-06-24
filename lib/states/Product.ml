@@ -8,7 +8,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   type t = S1.t * S2.t [@@deriving yojson]
 
   let pp fmt (s1, s2) =
-    Fmt.pf fmt "Product (@[<h>%a@]@\n) x (@[<h>%a@])" S1.pp s1 S2.pp s2
+    Fmt.pf fmt "Product (@[<v>%a@]) × (@[<v>%a@])" S1.pp s1 S2.pp s2
 
   let show s = Format.asprintf "%a" pp s
 

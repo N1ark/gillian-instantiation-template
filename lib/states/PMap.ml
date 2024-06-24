@@ -90,20 +90,23 @@ module Make_
     | SubError of Expr.t * S.err_t
   [@@deriving show, yojson]
 
-  type action = Alloc | SubAction of S.action
+  type action = Alloc | GetDomainSet | SubAction of S.action
 
   let action_from_str = function
     | "alloc" -> Some Alloc
+    | "get_domainset" -> Some GetDomainSet
     | s -> Option.map (fun a -> SubAction a) (S.action_from_str s)
 
   let action_to_str = function
     | SubAction a -> S.action_to_str a
     | Alloc -> "alloc"
+    | GetDomainSet -> "get_domainset"
 
   let list_actions () =
     (match I.mode with
     | Static -> [ (Alloc, [ "params" ], [ "address" ]) ]
     | Dynamic -> [])
+    @ [ (GetDomainSet, [], [ "domainset" ]) ]
     @ List.map
         (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
         (S.list_actions ())
@@ -160,7 +163,8 @@ module Make_
           match (r, I.mode) with
           | Ok (h', idx, s), _ -> DR.ok ((h', d), idx, s)
           (* In Dynamic mode, missing cells are instantiated to a default value *)
-          | Error (MissingCell idx), Dynamic ->
+          | Error (NotAllocated idx), Dynamic | Error (MissingCell idx), Dynamic
+            ->
               let s, _ = S.instantiate I.default_instantiation in
               let h' = ExpMap.add idx s h in
               let d' = modify_domain (fun d -> idx :: d) d in
@@ -169,7 +173,7 @@ module Make_
         in
         let+ r = S.execute_action action s args in
         match r with
-        (* HACK: For WISL compat, index appendent to the output *)
+        (* HACK: For WISL compat, index appendend to the output *)
         | Ok (s', v) ->
             Ok
               ( update_entry (h, d) idx s',
@@ -183,6 +187,22 @@ module Make_
           let h' = ExpMap.add idx s h in
           let d' = modify_domain (fun d -> idx :: d) d in
           DR.ok ((h', d'), idx :: v)
+    | GetDomainSet, [] -> (
+        match d with
+        (* Implementation taken from JSIL:
+           - ensure domain set is there
+           - ensure the domain set is exactly the set of keys in the map
+           - filter keys to remove empty cells (for JS: Nono)
+           - return as a list *)
+        | Some d ->
+            let keys = List.map fst (ExpMap.bindings h) in
+            if%ent Formula.Infix.(d #== (Expr.ESet keys)) then
+              let _, pos = ExpMap.partition (fun _ s -> S.is_empty s) h in
+              let keys = List.map fst (ExpMap.bindings pos) in
+              DR.ok ((h, Some d), [ Expr.list keys ])
+            else DR.error MissingDomainSet
+        | None -> DR.error MissingDomainSet)
+    | GetDomainSet, _ -> failwith "Invalid arguments for get_domainset"
 
   let consume pred (h, d) ins =
     let open Delayed.Syntax in
