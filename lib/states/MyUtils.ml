@@ -21,10 +21,9 @@ module Identifier (I : IDs) = struct
 end
 
 let pp_bindings ~pp_k ~pp_v iter fmt m =
-  let pp_binding fmt (k, v) = Fmt.pf fmt "%a -> %a" pp_k k pp_v v in
+  let pp_binding fmt (k, v) = Fmt.pf fmt "%a -> @[%a@]" pp_k k pp_v v in
   Fmt.pf fmt "@[<v>%a@]"
-    ( Fmt.iter_bindings ~sep:(Fmt.any "@\n@\n") iter @@ fun ft b ->
-      pp_binding ft b )
+    (Fmt.iter_bindings ~sep:(Fmt.any "@\n") iter @@ fun ft b -> pp_binding ft b)
     m
 
 module type SymExprMap = sig

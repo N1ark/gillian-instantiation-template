@@ -12,6 +12,12 @@ module UnsoundAlwaysOwned (S : States.MyMonadicSMemory.S) :
   let is_fully_owned _ = Formula.True
 end
 
+module StringIndex = struct
+  include StringIndex
+
+  let default_instantiation = [ Expr.Lit Nono ]
+end
+
 module PatchedProduct
     (IDs : IDs)
     (S1 : States.MyMonadicSMemory.S)
@@ -42,7 +48,12 @@ module MoveInToOut (S : States.MyMonadicSMemory.S) :
         match outs with
         | [ out' ] ->
             if%ent Formula.Infix.(out #== out') then Delayed_result.ok (s', [])
-            else failwith "Mismatch in domainset (Props) consumption"
+            else
+              failwith
+                (Fmt.str
+                   "Mismatch in domainset (Props) consumption - got: %a, \
+                    expected %a"
+                   Expr.pp out' Expr.pp out)
         | _ -> Delayed_result.ok (s', outs))
     | _ -> consume pred s ins
 end
@@ -78,6 +89,7 @@ module JSFilter : FilterVals = struct
   let action_filters =
     [
       "GetCell";
+      "test";
       "SetCell";
       "Alloc";
       "DeleteObject";
@@ -88,14 +100,42 @@ module JSFilter : FilterVals = struct
   let preds_filters = [ "Cell"; "Props"; "Metadata" ]
 end
 
-(* Actual exports *)
+module BaseObject = PMap (StringIndex) (Exclusive)
 
-module ParserAndCompiler = Js2jsil_lib.JS2GIL_ParserAndCompiler
-module ExternalSemantics = Semantics.External
+module DomainsetPatchInject : Injection with type t = BaseObject.t = struct
+  type t = BaseObject.t
+
+  let ret = Delayed.return ?learned:None ?learned_types:None
+  let pre_produce _ = ret
+  let pre_consume _ = ret
+
+  let post_consume = function
+    | "domainset" -> (
+        function
+        | (h, d), [ Expr.ESet dom ] ->
+            let ensure_not_nono k =
+              match States.MyUtils.ExpMap.find_opt k h with
+              | Some (Some (Expr.Lit Nono)) -> false
+              | _ -> true
+            in
+            let dom' = List.filter ensure_not_nono dom in
+            ret ((h, d), [ Expr.ESet dom' ])
+        | s, outs -> ret (s, outs))
+    | _ -> ret
+
+  let pre_execute_action _ = ret
+  let post_execute_action _ = ret
+end
 
 module Object =
-  Mapper (JSSubstInner) (MoveInToOut (PMap (StringIndex) (Exclusive)))
+  Mapper
+    (JSSubstInner)
+    (MoveInToOut (Injector (DomainsetPatchInject) (BaseObject)))
 
+(* Note JS doesn't actually have a freed, but rather just erases the field.
+   In practice the field doesn't get accessed anyways so it not existing or being
+   Freed should behave the same. A post-action injection could be used to replace
+   Freed with None for better fidelity. *)
 module BaseMemory =
   PMap
     (LocationIndex)
@@ -109,8 +149,7 @@ module JSInjection : Injection with type t = BaseMemory.t = struct
   let pre_consume _ = ret
   let post_consume _ = ret
 
-  let pre_execute_action action =
-    match action with
+  let pre_execute_action = function
     | "Alloc" -> (
         function
         (* Allocations are given two parameters, [empty; ###], we can ignore
@@ -120,6 +159,11 @@ module JSInjection : Injection with type t = BaseMemory.t = struct
 
   let post_execute_action _ = ret
 end
+
+(* Actual exports *)
+
+module ParserAndCompiler = Js2jsil_lib.JS2GIL_ParserAndCompiler
+module ExternalSemantics = Semantics.External
 
 module MonadicSMemory =
   Filter (JSFilter) (Injector (JSInjection) (Mapper (JSSubst) (BaseMemory)))

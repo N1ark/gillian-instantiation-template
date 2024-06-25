@@ -206,15 +206,26 @@ module Make_
 
   let consume pred (h, d) ins =
     let open Delayed.Syntax in
-    let open DR.Syntax in
     match (pred, ins) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
-        let** h', idx, s = validate_index (h, d) idx in
-        let+ r = S.consume pred s ins in
-        match r with
-        | Ok (s', v) -> Ok (update_entry (h', d) idx s', v)
-        | Error e -> Error (SubError (idx, e)))
+        let* res = validate_index (h, d) idx in
+        match (res, I.mode) with
+        | Ok (h', idx, s), _ -> (
+            let+ r = S.consume pred s ins in
+            match r with
+            | Ok (s', v) -> Ok (update_entry (h', d) idx s', v)
+            | Error e -> Error (SubError (idx, e)))
+        | Error (NotAllocated idx), Dynamic | Error (MissingCell idx), Dynamic
+          -> (
+            let s, _ = S.instantiate I.default_instantiation in
+            let h' = ExpMap.add idx s h in
+            let d' = modify_domain (fun d -> idx :: d) d in
+            let+ r = S.consume pred s ins in
+            match r with
+            | Ok (s', v) -> Ok (update_entry (h', d') idx s', v)
+            | Error e -> Error (SubError (idx, e)))
+        | Error e, _ -> DR.error e)
     | DomainSet, [] -> (
         match d with
         | Some d -> DR.ok ((h, None), [ d ])
@@ -340,8 +351,10 @@ module Make_
         | Error e -> Error (SubError (idx, e)))
 end
 
-module Make (I : PMapIndex) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S =
+module Make (I : PMapIndex) (S : MyMonadicSMemory.S) :
+  MyMonadicSMemory.S with type t = S.t MyUtils.ExpMap.t * Expr.t option =
   Make_ (I) (S) (MyUtils.ExpMap)
 
-module MakeEnt (I : PMapIndex) (S : MyMonadicSMemory.S) : MyMonadicSMemory.S =
+module MakeEnt (I : PMapIndex) (S : MyMonadicSMemory.S) :
+  MyMonadicSMemory.S with type t = S.t MyUtils.ExpMapEnt.t * Expr.t option =
   Make_ (I) (S) (MyUtils.ExpMapEnt)
