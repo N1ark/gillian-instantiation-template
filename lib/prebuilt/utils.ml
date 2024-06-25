@@ -8,6 +8,14 @@ module type NameMap = Mapper.NameMap
 
 type filter_mode = Filter.filter_mode
 
+(* Helpers *)
+module DummyInject = Injector.DummyInject
+
+module IDs : IDs = struct
+  let id1 = "left_"
+  let id2 = "right_"
+end
+
 (* Indices *)
 module LocationIndex = PMap.LocationIndex
 module StringIndex = PMap.StringIndex
@@ -29,9 +37,3 @@ module PMapEnt = States.PMap.MakeEnt
 module Product = Product.Make
 module Sum = Sum.Make
 module WISLMap = WISLMap.Make
-
-(* Helpers *)
-module IDs : IDs = struct
-  let id1 = "left_"
-  let id2 = "right_"
-end

@@ -28,6 +28,19 @@ module type Injection = sig
   val post_execute_action : (t * Expr.t list) injection_hook
 end
 
+module DummyInject (S : sig
+  type t
+end) : Injection with type t = S.t = struct
+  type t = S.t
+
+  let ret = Delayed.return ~learned:[] ~learned_types:[]
+  let pre_produce _ = ret
+  let pre_consume _ = ret
+  let post_consume _ = ret
+  let pre_execute_action _ = ret
+  let post_execute_action _ = ret
+end
+
 module Make (I : Injection) (S : MyMonadicSMemory.S with type t = I.t) :
   MyMonadicSMemory.S with type t = S.t = struct
   include S

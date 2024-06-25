@@ -103,28 +103,19 @@ end
 module BaseObject = PMap (StringIndex) (Exclusive)
 
 module DomainsetPatchInject : Injection with type t = BaseObject.t = struct
-  type t = BaseObject.t
+  include DummyInject (BaseObject)
 
-  let ret = Delayed.return ?learned:None ?learned_types:None
-  let pre_produce _ = ret
-  let pre_consume _ = ret
-
-  let post_consume = function
-    | "domainset" -> (
-        function
-        | (h, d), [ Expr.ESet dom ] ->
-            let ensure_not_nono k =
-              match States.MyUtils.ExpMap.find_opt k h with
-              | Some (Some (Expr.Lit Nono)) -> false
-              | _ -> true
-            in
-            let dom' = List.filter ensure_not_nono dom in
-            ret ((h, d), [ Expr.ESet dom' ])
-        | s, outs -> ret (s, outs))
-    | _ -> ret
-
-  let pre_execute_action _ = ret
-  let post_execute_action _ = ret
+  let post_consume p ((h, d), outs) =
+    match (p, outs) with
+    | "domainset", [ Expr.ESet dom ] ->
+        let ensure_not_nono k =
+          match States.MyUtils.ExpMap.find_opt k h with
+          | Some (Some (Expr.Lit Nono)) -> false
+          | _ -> true
+        in
+        let dom' = List.filter ensure_not_nono dom in
+        Delayed.return ((h, d), [ Expr.ESet dom' ])
+    | _ -> Delayed.return ((h, d), outs)
 end
 
 module Object =
@@ -142,22 +133,13 @@ module BaseMemory =
     (Freeable (UnsoundAlwaysOwned (PatchedProduct (IDs) (Object) (Agreement))))
 
 module JSInjection : Injection with type t = BaseMemory.t = struct
-  type t = BaseMemory.t
+  include DummyInject (BaseMemory)
 
-  let ret = Delayed.return ?learned:None ?learned_types:None
-  let pre_produce _ = ret
-  let pre_consume _ = ret
-  let post_consume _ = ret
-
-  let pre_execute_action = function
-    | "Alloc" -> (
-        function
-        (* Allocations are given two parameters, [empty; ###], we can ignore
+  let pre_execute_action action (s, args) =
+    match (action, args) with
+    (* Allocations are given two parameters, [empty; ###], we can ignore
            the empty and pass the second value wich is the metadata location *)
-        | s, Expr.Lit Empty :: args | s, args -> ret (s, args))
-    | _ -> ret
-
-  let post_execute_action _ = ret
+    | "Alloc", Expr.Lit Empty :: args | _, args -> Delayed.return (s, args)
 end
 
 (* Actual exports *)
