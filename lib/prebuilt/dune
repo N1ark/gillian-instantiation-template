@@ -3,9 +3,11 @@
  (public_name instantiation.prebuilt)
  (libraries
   states
+  c_states
   gillian
   gillian.ppx_sat.runtime
   gillian-js-libs.js2jsil_lib
-  gillian-js-libs.semantics)
+  gillian-js-libs.semantics
+  compcert)
  (preprocess
   (pps gillian.ppx_sat)))
