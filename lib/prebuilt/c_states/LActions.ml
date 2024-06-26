@@ -7,15 +7,12 @@ type mem_ac =
   | WeakValidPointer
   | Store
   | Load
-  | Free
   | Move
   | SetZeros
 
 type genv_ac = GetDef
 type ac = AGEnv of genv_ac | AMem of mem_ac
-
-type ga = Single | Array | Hole | Zeros | Bounds | Freed
-[@@deriving yojson, show]
+type ga = Single | Array | Hole | Zeros | Bounds [@@deriving yojson, show]
 
 (* Some things about the semantics of these Actions *)
 
@@ -34,7 +31,6 @@ let str_mem_ac = function
   | Store -> "store"
   | Load -> "load"
   | Move -> "move"
-  | Free -> "free"
   | SetZeros -> "setZeros"
 
 let mem_ac_from_str = function
@@ -44,7 +40,6 @@ let mem_ac_from_str = function
   | "getcurperm" -> GetCurPerm
   | "store" -> Store
   | "load" -> Load
-  | "free" -> Free
   | "move" -> Move
   | "setZeros" -> SetZeros
   | s -> failwith ("Unkown Memory Action : " ^ s)
@@ -76,7 +71,6 @@ let str_ga = function
   | Hole -> "mem_hole"
   | Zeros -> "mem_zeros"
   | Bounds -> "mem_bounds"
-  | Freed -> "mem_freed"
 
 let ga_from_str = function
   | "mem_single" -> Single
@@ -84,7 +78,6 @@ let ga_from_str = function
   | "mem_bounds" -> Bounds
   | "mem_zeros" -> Zeros
   | "mem_hole" -> Hole
-  | "mem_freed" -> Freed
   | str -> failwith ("Unkown memory assertion : " ^ str)
 
 (** Additional stuff *)

@@ -32,8 +32,6 @@ module Core = struct
   let bounds ~low ~high =
     let bounds = Expr.EList [ low; high ] in
     pred Bounds [] [ bounds ]
-
-  let freed = pred Freed [] []
 end
 
 module Others = struct
