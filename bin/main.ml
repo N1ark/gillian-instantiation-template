@@ -10,9 +10,9 @@ module PC = Prebuilt.ParserAndCompiler
 module ExternalSemantics = Prebuilt.ExternalSemantics
 
 (* Debug *)
-module Debug = Debug.Make (MyMem)
+(* module Debug = Debug.Make (MyMem)
 
-let () = Debug.print_info ()
+   let () = Debug.print_info ()*)
 
 (* Convert custom memory model -> Gillian memory model *)
 module PatchedMem = MyMonadicSMemory.Make (Logger.Make (MyMem))

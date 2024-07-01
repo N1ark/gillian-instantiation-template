@@ -1,5 +1,6 @@
 open Gil_syntax
 open Monadic
+module Subst = Gillian.Symbolic.Subst
 module DR = Delayed_result
 module DO = Delayed_option
 module SS = Utils.Containers.SS
@@ -1067,6 +1068,30 @@ module Tree = struct
             [ CoreP.array ~ofs:low ~perm ~chunk ~size:total_size ~sval_arr:e ]
         (*:: learned*))
 
+  let rec assertions_others { node; span; children; _ } =
+    match node with
+    | NotOwned Totally -> []
+    | NotOwned Partially | MemVal { mem_val = Undef Partially; _ } ->
+        let left, right = Option.get children in
+        assertions_others left @ assertions_others right
+    | MemVal { mem_val = Undef Totally; _ } -> []
+    | MemVal { mem_val = Zeros; _ } -> []
+    | MemVal { mem_val = Single { value; _ }; _ } ->
+        let _, types = NSVal.to_gil_expr value in
+        (* TODO: how to add types to assertions while keeping the simple signature *)
+        List.map
+          (let open Formula.Infix in
+           fun (x, t) -> Asrt.Pure (Expr.typeof x) #== (Expr.type_ t))
+          types
+    | MemVal { mem_val = Array { chunk; values }; _ } -> (
+        match values with
+        | AllUndef | AllZeros -> []
+        | array ->
+            let _, learned =
+              SVArr.to_gil_expr_undelayed ~range:span array ~chunk
+            in
+            List.map (fun x -> Asrt.Pure x) learned)
+
   let rec substitution
       ~svarr_subst
       ~sval_subst
@@ -1128,20 +1153,19 @@ module M = struct
   type action = mem_ac
   type pred = ga
 
-  let action_to_str = str_mem_ac
-  let action_from_str s = try Some (mem_ac_from_str s) with _ -> None
+  let action_to_str = str_ac
+  let action_from_str s = try Some (ac_from_str s) with _ -> None
   let pred_to_str = str_ga
   let pred_from_str s = try Some (ga_from_str s) with _ -> None
 
   let list_actions _ =
     [
-      (Alloc, [ "?" ], [ "?" ]);
       (DropPerm, [ "?" ], [ "?" ]);
       (GetCurPerm, [ "?" ], [ "?" ]);
       (WeakValidPointer, [ "?" ], [ "?" ]);
       (Store, [ "?" ], [ "?" ]);
       (Load, [ "?" ], [ "?" ]);
-      (Move, [ "?" ], [ "?" ]);
+      (* (Move, [ "?" ], [ "?" ]);*)
       (SetZeros, [ "?" ], [ "?" ]);
     ]
 
@@ -1224,10 +1248,6 @@ module M = struct
   let prod_bounds x bounds = Ok { x with bounds }
   let with_root_opt x root = Ok { x with root }
   let with_root t root = with_root_opt t (Some root)
-
-  let alloc low high =
-    let bounds = Range.make low high in
-    { root = Some (Tree.undefined bounds); bounds = Some bounds }
 
   let drop_perm { bounds; root } low high new_perm =
     let open DR.Syntax in
@@ -1453,6 +1473,11 @@ module M = struct
     in
     bounds @ tree
 
+  let assertions_others { root; _ } =
+    match root with
+    | None -> []
+    | Some root -> Tree.assertions_others root
+
   let merge ~old_tree ~new_tree =
     let open DR.Syntax in
     Logging.verbose (fun m -> m "OLD TREE:@\n%a" pp old_tree);
@@ -1509,14 +1534,162 @@ module M = struct
     in
     { bounds; root }
 
-  let execute_action _ _ _ = failwith "Not implemented: execute action"
-  let consume _ _ _ = failwith "Not implemented: consume"
-  let produce _ _ _ = failwith "Not implemented: produce"
-  let compose _ _ = failwith "Not implemented: compose"
-  let is_fully_owned _ = failwith "Not implemented: is_fu_owned"
-  let substitution_in_place _ _ = failwith "Not implemented: subst in place"
-  let get_recovery_tactic _ _ = failwith "Not implemented get recov tactic"
-  let instantiate _ = failwith "Not implemented: instantiate"
+  let execute_action a s args =
+    let open Delayed.Syntax in
+    let open DR.Syntax in
+    match (a, args) with
+    | GetCurPerm, [ ofs ] ->
+        let** perm = get_perm_at s ofs in
+        let perm_string =
+          Expr.Lit (String (ValueTranslation.string_of_permission_opt perm))
+        in
+        DR.ok (s, [ perm_string ])
+    | WeakValidPointer, [ ofs ] ->
+        let** bool = weak_valid_pointer s ofs in
+        let res = Expr.bool bool in
+        DR.ok (s, [ res ])
+    | DropPerm, [ low; high; Expr.Lit (String perm_string) ] ->
+        let perm = ValueTranslation.permission_of_string perm_string in
+        let++ s' = drop_perm s low high perm in
+        (s', [])
+    | Store, [ Expr.Lit (String chunk_name); ofs; value ] ->
+        let* sval = SVal.of_gil_expr_exn value in
+        let chunk = ValueTranslation.chunk_of_string chunk_name in
+        let++ s' = store s chunk ofs sval in
+        (s', [])
+    | Load, [ Expr.Lit (String chunk_name); ofs ] ->
+        let chunk = ValueTranslation.chunk_of_string chunk_name in
+        let** value, s' = load s chunk ofs in
+        let* gil_value = SVal.to_gil_expr value in
+        DR.ok (s', [ gil_value ])
+    | _, _ ->
+        failwith
+          (Fmt.str "Invalid action %s with args %a" (action_to_str a)
+             Fmt.Dump.(list Expr.pp)
+             args)
+
+  let consume pred s ins =
+    let open Delayed.Syntax in
+    let open DR.Syntax in
+    match (pred, ins) with
+    | Single, [ ofs; Expr.Lit (String chunk_string) ] ->
+        let chunk = ValueTranslation.chunk_of_string chunk_string in
+        let** sval, perm, s' = cons_single s ofs chunk in
+        let* sval_e = SVal.to_gil_expr sval in
+        let perm_string = ValueTranslation.string_of_permission_opt perm in
+        DR.ok (s', [ sval_e; Expr.Lit (String perm_string) ])
+    | Array, [ ofs; size; Expr.Lit (String chunk_string) ] ->
+        let chunk = ValueTranslation.chunk_of_string chunk_string in
+        let** array, perm, s' = cons_array s ofs size chunk in
+        let range = Range.of_low_chunk_and_size ofs chunk size in
+        let* array_e = MonadicSVal.SVArray.to_gil_expr ~chunk ~range array in
+        let perm_string = ValueTranslation.string_of_permission_opt perm in
+        DR.ok (s', [ array_e; Expr.Lit (String perm_string) ])
+    | Hole, [ low; high ] ->
+        let** s', perm = cons_hole s low high in
+        let perm_e =
+          Expr.string (ValueTranslation.string_of_permission_opt perm)
+        in
+        DR.ok (s', [ perm_e ])
+    | Zeros, [ low; high ] ->
+        let** s', perm = cons_zeros s low high in
+        let perm_e =
+          Expr.string (ValueTranslation.string_of_permission_opt perm)
+        in
+        DR.ok (s', [ perm_e ])
+    | Bounds, [] ->
+        let++ bounds, s' = cons_bounds s |> DR.of_result in
+        let bounds_e =
+          match bounds with
+          | None -> Expr.Lit Null
+          | Some (low, high) -> Expr.EList [ low; high ]
+        in
+        (s', [ bounds_e ])
+    | _, _ -> failwith "Invalid consume call"
+
+  let produce pred s insouts =
+    let open Delayed.Syntax in
+    let filter_errors dr =
+      Delayed.bind dr (fun res ->
+          match res with
+          | Ok res -> Delayed.return res
+          | Error err ->
+              Logging.tmi (fun m -> m "Filtering error branch: %a" pp_err err);
+              Delayed.vanish ())
+    in
+    match (pred, insouts) with
+    | ( Single,
+        [
+          ofs;
+          Expr.Lit (String chunk_string);
+          sval_e;
+          Expr.Lit (String perm_string);
+        ] ) ->
+        let perm = ValueTranslation.permission_of_string perm_string in
+        let chunk = ValueTranslation.chunk_of_string chunk_string in
+        let* sval = SVal.of_gil_expr_exn sval_e in
+        prod_single s ofs chunk sval perm |> filter_errors
+    | ( Array,
+        [
+          ofs;
+          size;
+          Expr.Lit (String chunk_string);
+          arr_e;
+          Expr.Lit (String perm_string);
+        ] ) ->
+        let perm = ValueTranslation.permission_of_string perm_string in
+        let chunk = ValueTranslation.chunk_of_string chunk_string in
+        let arr = MonadicSVal.SVArray.of_gil_expr_exn arr_e in
+        prod_array s ofs size chunk arr perm |> filter_errors
+    | Hole, [ low; high; Expr.Lit (String perm_string) ] ->
+        let perm = ValueTranslation.permission_of_string perm_string in
+        prod_hole s low high perm |> filter_errors
+    | Zeros, [ low; high; Expr.Lit (String perm_string) ] ->
+        let perm = ValueTranslation.permission_of_string perm_string in
+        prod_zeros s low high perm |> filter_errors
+    | Bounds, [ bounds_e ] ->
+        let bounds =
+          match bounds_e with
+          | Expr.EList [ low; high ] -> Some (low, high)
+          | Lit (LList [ low; high ]) -> Some (Lit low, Lit high)
+          | Lit Null -> None
+          | _ -> failwith "set_bounds wrong param"
+        in
+        prod_bounds s bounds |> DR.of_result |> filter_errors
+    | _, _ -> failwith "Invalid produce call"
+
+  let compose s1 s2 =
+    let open Delayed.Syntax in
+    let* res = merge ~old_tree:s1 ~new_tree:s2 in
+    match res with
+    | Ok s' -> Delayed.return s'
+    | Error e ->
+        Logging.verbose (fun fmt ->
+            fmt "Vanishing on compose error: %a" pp_err_t e);
+        Delayed.vanish ()
+
+  let is_fully_owned { root; bounds } e =
+    match (root, bounds, e) with
+    | Some _, Some bounds, [ low; high ] ->
+        (* This is inaccurate; missing permission checking and more stuff done in the original,
+           but would require is_fully_owned to be able to branch which isn't the case. *)
+        Range.is_equal (low, high) bounds
+    | _ -> Formula.False
+
+  let substitution_in_place subst s =
+    let le_subst = Subst.subst_in_expr subst ~partial:true in
+    let sval_subst = SVal.substitution ~le_subst in
+    let svarr_subst = SVal.SVArray.subst ~le_subst in
+    substitution ~le_subst ~sval_subst ~svarr_subst s |> Delayed.return
+
+  let get_recovery_tactic _ _ = Gillian.General.Recovery_tactic.none
+
+  let instantiate = function
+    | [ low; high ] ->
+        let bounds = Range.make low high in
+        ({ root = Some (Tree.undefined bounds); bounds = Some bounds }, [])
+    | _ -> failwith "BlockTree: Invalid instantiate arguments"
+
   let get_fixes _ _ = failwith "Not implemented: get fixes"
   let can_fix _ = failwith "Not implemented: can fix"
   let apply_fix _ = failwith "Not implemented: apply fix"

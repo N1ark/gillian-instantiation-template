@@ -67,7 +67,7 @@ let compose s1 s2 =
   | _, None -> Delayed.return s1
   | Some v1, Some v2 -> Delayed.return ~learned:[ v1 #== v2 ] (Some v1)
 
-let is_fully_owned _ = Formula.False
+let is_fully_owned _ _ = Formula.False
 
 let is_empty = function
   | None -> true
@@ -88,6 +88,8 @@ let alocs = function
 let assertions = function
   | None -> []
   | Some v -> [ (Agree, [], [ v ]) ]
+
+let assertions_others _ = []
 
 let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
   match e with

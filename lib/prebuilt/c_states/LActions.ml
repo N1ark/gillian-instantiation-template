@@ -1,17 +1,17 @@
 (* First, type definitions *)
 
 type mem_ac =
-  | Alloc
+  (* | Alloc*)
   | DropPerm
   | GetCurPerm
   | WeakValidPointer
   | Store
   | Load
-  | Move
+  (* | Move*)
   | SetZeros
 
 type genv_ac = GetDef
-type ac = AGEnv of genv_ac | AMem of mem_ac
+type ac = (* AGEnv of genv_ac | AMem of *) mem_ac
 type ga = Single | Array | Hole | Zeros | Bounds [@@deriving yojson, show]
 
 (* Some things about the semantics of these Actions *)
@@ -24,23 +24,23 @@ let mem_prefix = "mem"
 let genv_prefix = "genv"
 
 let str_mem_ac = function
-  | Alloc -> "alloc"
+  (* | Alloc -> "alloc"*)
   | DropPerm -> "dropperm"
   | WeakValidPointer -> "weakvalidpointer"
   | GetCurPerm -> "getperm"
   | Store -> "store"
   | Load -> "load"
-  | Move -> "move"
+  (* | Move -> "move"*)
   | SetZeros -> "setZeros"
 
 let mem_ac_from_str = function
-  | "alloc" -> Alloc
+  (* | "alloc" -> Alloc*)
   | "dropperm" -> DropPerm
   | "weakvalidpointer" -> WeakValidPointer
   | "getcurperm" -> GetCurPerm
   | "store" -> Store
   | "load" -> Load
-  | "move" -> Move
+  (* | "move" -> Move*)
   | "setZeros" -> SetZeros
   | s -> failwith ("Unkown Memory Action : " ^ s)
 
@@ -55,14 +55,16 @@ let separator_char = '_'
 let separator_string = String.make 1 separator_char
 
 let str_ac = function
-  | AMem mem_ac -> mem_prefix ^ separator_string ^ str_mem_ac mem_ac
-  | AGEnv genv_ac -> genv_prefix ^ separator_string ^ str_genv_ac genv_ac
+  (* AMem *)
+  | mem_ac -> mem_prefix ^ separator_string ^ str_mem_ac mem_ac
+(* | AGEnv genv_ac -> genv_prefix ^ separator_string ^ str_genv_ac genv_ac*)
 
 let ac_from_str str =
   match String.split_on_char separator_char str with
-  | [ pref; ac ] when String.equal pref mem_prefix -> AMem (mem_ac_from_str ac)
-  | [ pref; ac ] when String.equal pref genv_prefix ->
-      AGEnv (genv_ac_from_str ac)
+  | [ pref; ac ] when String.equal pref mem_prefix ->
+      (* AMem *) mem_ac_from_str ac
+  (* | [ pref; ac ] when String.equal pref genv_prefix ->
+      AGEnv (genv_ac_from_str ac)*)
   | _ -> failwith ("Unkown action : " ^ str)
 
 let str_ga = function

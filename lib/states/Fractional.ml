@@ -88,7 +88,8 @@ let compose (s1 : t) (s2 : t) =
         ~learned:[ v #== v'; (q +. q') #<=. (Expr.num 1.) ]
         (Some (v, q +. q'))
 
-let is_fully_owned = function
+let is_fully_owned s _ =
+  match s with
   | None -> Formula.False
   | Some (_, q) -> Formula.Infix.(q #== (Expr.num 1.))
 
@@ -111,6 +112,8 @@ let alocs = function
 let assertions = function
   | None -> []
   | Some (v, q) -> [ (Frac, [ q ], [ v ]) ]
+
+let assertions_others _ = []
 
 let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
   match e with

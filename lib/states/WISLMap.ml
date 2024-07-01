@@ -145,9 +145,9 @@ module Make (S : MyMonadicSMemory.S) :
 
   let compose _ _ = failwith "Implement here (compose)"
 
-  let is_fully_owned h =
+  let is_fully_owned h e =
     let open Formula.Infix in
-    SMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s)) h Formula.True
+    SMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s e)) h Formula.True
 
   let is_empty h = SMap.for_all (fun _ s -> S.is_empty s) h
 
@@ -185,6 +185,8 @@ module Make (S : MyMonadicSMemory.S) :
     let pred_wrap k (p, i, o) = (p, Expr.loc_from_loc_name k :: i, o) in
     let folder k s acc = (List.map (pred_wrap k)) (S.assertions s) @ acc in
     SMap.fold folder h []
+
+  let assertions_others _ = []
 
   let get_recovery_tactic h = function
     | SubError (idx, e) -> S.get_recovery_tactic (SMap.find idx h) e

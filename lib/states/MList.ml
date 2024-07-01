@@ -132,11 +132,13 @@ module Make (S : MyMonadicSMemory.S) :
         Delayed.return (b', n)
     | (_, Some _), (_, Some _) -> Delayed.vanish ()
 
-  let is_fully_owned =
+  let is_fully_owned s e =
     let open Formula.Infix in
-    function
+    match s with
     | b, Some _ ->
-        ExpMap.fold (fun _ v acc -> acc #&& (S.is_fully_owned v)) b Formula.True
+        ExpMap.fold
+          (fun _ v acc -> acc #&& (S.is_fully_owned v e))
+          b Formula.True
     | _, None -> Formula.False
 
   let is_empty _ =
@@ -203,6 +205,9 @@ module Make (S : MyMonadicSMemory.S) :
     match n with
     | Some n -> (Length, [], [ n ]) :: sub_asrts
     | None -> sub_asrts
+
+  let assertions_others (b, _) =
+    List.concat_map (fun (_, v) -> S.assertions_others v) (ExpMap.bindings b)
 
   let get_recovery_tactic (b, _) = function
     | SubError (idx, e) -> (

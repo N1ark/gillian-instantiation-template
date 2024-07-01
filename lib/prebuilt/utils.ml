@@ -5,6 +5,7 @@ module type FilterVals = Filter.FilterVals
 module type IDs = MyUtils.IDs
 module type Injection = Injector.Injection
 module type NameMap = Mapper.NameMap
+module type MyMonadicSMemory = MyMonadicSMemory.S
 
 type filter_mode = Filter.filter_mode
 

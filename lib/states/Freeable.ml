@@ -75,7 +75,7 @@ module Make (S : MyMonadicSMemory.S) :
         | Error e -> Error (SubError e))
     | SubAction _, Freed -> DR.error UseAfterFree
     | Free, SubState s ->
-        if%sat S.is_fully_owned s then DR.ok (Freed, [])
+        if%sat S.is_fully_owned s args then DR.ok (Freed, [])
         else DR.error MissingResource
     | Free, Freed -> DR.error DoubleFree
     | Free, None -> DR.error MissingResource
@@ -121,8 +121,9 @@ module Make (S : MyMonadicSMemory.S) :
         SubState s'
     | _ -> Delayed.vanish ()
 
-  let is_fully_owned = function
-    | SubState s -> S.is_fully_owned s
+  let is_fully_owned s e =
+    match s with
+    | SubState s -> S.is_fully_owned s e
     | Freed -> Formula.True
     | None -> Formula.False
 
@@ -156,6 +157,10 @@ module Make (S : MyMonadicSMemory.S) :
         List.map (fun (p, i, o) -> (SubPred p, i, o)) (S.assertions s)
     | Freed -> [ (FreedPred, [], []) ]
     | None -> []
+
+  let assertions_others = function
+    | SubState s -> S.assertions_others s
+    | _ -> []
 
   let get_recovery_tactic s e =
     match (s, e) with

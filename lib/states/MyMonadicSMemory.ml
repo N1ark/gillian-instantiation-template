@@ -40,7 +40,7 @@ module type S = sig
   val compose : t -> t -> t Delayed.t
 
   (* For Freeable *)
-  val is_fully_owned : t -> Formula.t
+  val is_fully_owned : t -> Expr.t list -> Formula.t
 
   (* For PMap *)
   val is_empty : t -> bool
@@ -48,6 +48,7 @@ module type S = sig
 
   (* Core predicates: pred * ins * outs, converted to Asrt.GA *)
   val assertions : t -> (pred * Expr.t list * Expr.t list) list
+  val assertions_others : t -> Asrt.t list
 
   (* Helpers *)
   val lvars : t -> Containers.SS.t
@@ -125,8 +126,10 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
     | None -> failwith ("Predicate not found: " ^ core_pred)
 
   let assertions ?to_keep:_ s =
-    let asrts = assertions s in
-    List.map (fun (p, ins, outs) -> Asrt.GA (pred_to_str p, ins, outs)) asrts
+    let core_preds = assertions s in
+    let formulas = assertions_others s in
+    let mapping (p, ins, outs) = Asrt.GA (pred_to_str p, ins, outs) in
+    List.map mapping core_preds @ formulas
 
   (* Override methods to keep implementations light *)
   let clear _ = empty ()

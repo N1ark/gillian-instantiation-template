@@ -95,8 +95,8 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     let+ s2' = S2.compose s2a s2b in
     (s1', s2')
 
-  let is_fully_owned (s1, s2) =
-    Formula.Infix.((S1.is_fully_owned s1) #&& (S2.is_fully_owned s2))
+  let is_fully_owned (s1, s2) e =
+    Formula.Infix.((S1.is_fully_owned s1 e) #&& (S2.is_fully_owned s2 e))
 
   let is_empty (s1, s2) = S1.is_empty s1 && S2.is_empty s2
 
@@ -121,6 +121,9 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     let a2 = S2.assertions s2 in
     let a2 = List.map (fun (p, i, o) -> (P2 p, i, o)) a2 in
     a1 @ a2
+
+  let assertions_others (s1, s2) =
+    S1.assertions_others s1 @ S2.assertions_others s2
 
   let get_recovery_tactic (s1, s2) = function
     | E1 e -> S1.get_recovery_tactic s1 e

@@ -64,8 +64,8 @@ end
 module Make_
     (I : PMapIndex)
     (S : MyMonadicSMemory.S)
-    (ExpMap : MyUtils.SymExprMap) :
-  MyMonadicSMemory.S with type t = S.t ExpMap.t * Expr.t option = struct
+    (ExpMap : MyUtils.SymExprMap) =
+struct
   type t = S.t ExpMap.t * Expr.t option [@@deriving yojson]
 
   let pp fmt ((h, d) : t) =
@@ -173,11 +173,7 @@ module Make_
         in
         let+ r = S.execute_action action s args in
         match r with
-        (* HACK: For WISL compat, index appendend to the output *)
-        | Ok (s', v) ->
-            Ok
-              ( update_entry (h, d) idx s',
-                if List.is_empty v then v else idx :: v )
+        | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
         | Error e -> Error (SubError (idx, e)))
     | Alloc, args ->
         if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
@@ -270,11 +266,13 @@ module Make_
     let+ h = ExpMap.sym_merge S.compose h1 h2 in
     (h, d)
 
-  let is_fully_owned =
+  let is_fully_owned s e =
     let open Formula.Infix in
-    function
+    match s with
     | h, Some _ ->
-        ExpMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s)) h Formula.True
+        ExpMap.fold
+          (fun _ s acc -> acc #&& (S.is_fully_owned s e))
+          h Formula.True
     | _, None -> Formula.False
 
   let is_empty = function
@@ -323,6 +321,9 @@ module Make_
     | None -> sub_assrts
     | Some d -> (DomainSet, [], [ d ]) :: sub_assrts
 
+  let assertions_others (h, _) =
+    List.concat_map (fun (_, v) -> S.assertions_others v) (ExpMap.bindings h)
+
   let get_recovery_tactic (h, _) = function
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
     | _ -> Gillian.General.Recovery_tactic.none
@@ -351,8 +352,7 @@ module Make_
         | Error e -> Error (SubError (idx, e)))
 end
 
-module Make (I : PMapIndex) (S : MyMonadicSMemory.S) :
-  MyMonadicSMemory.S with type t = S.t MyUtils.ExpMap.t * Expr.t option =
+module Make (I : PMapIndex) (S : MyMonadicSMemory.S) =
   Make_ (I) (S) (MyUtils.ExpMap)
 
 module MakeEnt (I : PMapIndex) (S : MyMonadicSMemory.S) :
