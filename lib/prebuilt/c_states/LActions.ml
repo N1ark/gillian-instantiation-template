@@ -7,8 +7,8 @@ type mem_ac =
   | WeakValidPointer
   | Store
   | Load
-  (* | Move*)
-  | SetZeros
+(* | Move*)
+(* | SetZeros*)
 
 type genv_ac = GetDef
 type ac = (* AGEnv of genv_ac | AMem of *) mem_ac
@@ -30,8 +30,8 @@ let str_mem_ac = function
   | GetCurPerm -> "getperm"
   | Store -> "store"
   | Load -> "load"
-  (* | Move -> "move"*)
-  | SetZeros -> "setZeros"
+(* | Move -> "move"*)
+(* | SetZeros -> "setZeros"*)
 
 let mem_ac_from_str = function
   (* | "alloc" -> Alloc*)
@@ -41,7 +41,7 @@ let mem_ac_from_str = function
   | "store" -> Store
   | "load" -> Load
   (* | "move" -> Move*)
-  | "setZeros" -> SetZeros
+  (* | "setZeros" -> SetZeros*)
   | s -> failwith ("Unkown Memory Action : " ^ s)
 
 let str_genv_ac = function

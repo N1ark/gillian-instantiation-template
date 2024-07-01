@@ -1165,8 +1165,6 @@ module M = struct
       (WeakValidPointer, [ "?" ], [ "?" ]);
       (Store, [ "?" ], [ "?" ]);
       (Load, [ "?" ], [ "?" ]);
-      (* (Move, [ "?" ], [ "?" ]);*)
-      (SetZeros, [ "?" ], [ "?" ]);
     ]
 
   let list_preds _ =

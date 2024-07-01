@@ -92,7 +92,7 @@ module Defaults = struct
     failwith "Implement here (get_failing_constraint)"
 
   let split_further _ _ _ _ = None
-  let clean_up ?keep:_ _ = failwith "Implement here (clean_up)"
+  let clean_up ?(keep = Expr.Set.empty) _ = (Expr.Set.empty, keep)
   let mem_constraints _ = []
 end
 
