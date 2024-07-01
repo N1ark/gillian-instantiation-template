@@ -159,19 +159,18 @@ module Make (S : MyMonadicSMemory.S) : MyMonadicSMemory.S = struct
     | SubState s, SubError e -> S.get_recovery_tactic s e
     | _ -> Gillian.General.Recovery_tactic.none (* TODO *)
 
-  let get_fixes s pfs tenv e =
-    match (e, s) with
-    | SubError e, SubState s ->
-        let mapper (fs, fml, t, c) =
-          (List.map (fun f -> SubFix f) fs, fml, t, c)
-        in
-        List.map mapper (S.get_fixes s pfs tenv e)
-    | _ -> [] (* TODO *)
-
   let can_fix = function
     | SubError e -> S.can_fix e
     | MissingResource -> true (* TODO *)
     | _ -> false
+
+  let get_fixes s e =
+    let open Delayed.Syntax in
+    match (e, s) with
+    | SubError e, SubState s ->
+        let+ fixes = S.get_fixes s e in
+        List.map (fun f -> SubFix f) fixes
+    | _, _ -> failwith "Implement here get_fixes"
 
   let apply_fix s f =
     let open Delayed.Syntax in

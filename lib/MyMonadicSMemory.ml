@@ -67,11 +67,10 @@ module type S = sig
   val get_fixes :
     (* TODO: see if the signature can be improved... *)
     t ->
-    PFS.t ->
-    Type_env.t ->
+    (* PFS.t ->
+       Type_env.t ->*)
     err_t ->
-    (c_fix_t list * Formula.t list * (string * Type.t) list * Containers.SS.t)
-    list
+    c_fix_t list Delayed.t
 
   val can_fix : err_t -> bool
   val apply_fix : t -> c_fix_t -> (t, err_t) result Delayed.t
@@ -127,6 +126,25 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
   let assertions ?to_keep:_ s =
     let asrts = assertions s in
     List.map (fun (p, ins, outs) -> Asrt.GA (pred_to_str p, ins, outs)) asrts
+
+  let get_fixes s pfs gamma e =
+    Logging.tmi (fun f -> f "GETTING FIXES for error %a" pp_err_t e);
+    Logging.tmi (fun f -> f "State is %s" (show s));
+
+    let module Gpc = Engine.Gpc in
+    let module Pc = Monadic.Pc in
+    let open Gillian.Utils.Syntaxes.List in
+    let gpc = Gpc.make ~matching:false ~pfs ~gamma () in
+    let pc = Pc.of_gpc gpc in
+    let delayed_fixes = get_fixes s e in
+    let+ Branch.{ pc; value } = Delayed.resolve ~curr_pc:pc delayed_fixes in
+    let Pc.{ learned; learned_types; _ } = pc in
+    let learned = Formula.Set.to_list learned in
+
+    Logging.tmi (fun f ->
+        List.iter (fun fix -> f "- fix: %s" (show_c_fix_t fix)) value);
+
+    (value, learned, learned_types, Containers.SS.empty)
 
   (* Override methods to keep implementations light *)
   let clear _ = empty ()

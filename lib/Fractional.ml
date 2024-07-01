@@ -117,11 +117,11 @@ let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
   (* | MissingState -> Recovery_tactic.try_unfold ??? *)
   | _ -> Recovery_tactic.none
 
-let get_fixes _ _ _ = function
-  | _ -> []
-
 let can_fix = function
   | _ -> false
+
+let get_fixes _ = function
+  | _ -> []
 
 let apply_fix _ = function
   | _ -> Delayed.vanish ()

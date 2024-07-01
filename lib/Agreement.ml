@@ -90,15 +90,9 @@ let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
   (* | MissingState -> Recovery_tactic.try_unfold ??? *)
   | _ -> Recovery_tactic.none
 
-let get_fixes _ _ _ = function
+let get_fixes _ = function
   | MissingState ->
-      [
-        (* TODO: ???????? *)
-        ( [ FAddState (LVar (Generators.fresh_svar ())) ],
-          [],
-          [],
-          Containers.SS.empty );
-      ]
+      Delayed.return [ FAddState (LVar (Generators.fresh_svar ())) ]
 
 let can_fix = function
   | MissingState -> true
