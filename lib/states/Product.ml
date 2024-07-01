@@ -129,21 +129,19 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | E1 e -> S1.get_recovery_tactic s1 e
     | E2 e -> S2.get_recovery_tactic s2 e
 
-  let get_fixes (s1, s2) pfs tenv = function
-    | E1 e ->
-        let fixes = S1.get_fixes s1 pfs tenv e in
-        List.map
-          (fun (f, fs, vs, ss) -> (List.map (fun f -> F1 f) f, fs, vs, ss))
-          fixes
-    | E2 e ->
-        let fixes = S2.get_fixes s2 pfs tenv e in
-        List.map
-          (fun (f, fs, vs, ss) -> (List.map (fun f -> F2 f) f, fs, vs, ss))
-          fixes
-
   let can_fix = function
     | E1 e -> S1.can_fix e
     | E2 e -> S2.can_fix e
+
+  let get_fixes (s1, s2) =
+    let open Delayed.Syntax in
+    function
+    | E1 e ->
+        let+ fixes = S1.get_fixes s1 e in
+        List.map (fun f -> F1 f) fixes
+    | E2 e ->
+        let+ fixes = S2.get_fixes s2 e in
+        List.map (fun f -> F2 f) fixes
 
   let apply_fix (s1, s2) =
     let open Delayed.Syntax in

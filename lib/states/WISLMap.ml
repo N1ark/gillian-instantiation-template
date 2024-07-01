@@ -192,18 +192,17 @@ module Make (S : MyMonadicSMemory.S) :
     | SubError (idx, e) -> S.get_recovery_tactic (SMap.find idx h) e
     | _ -> Gillian.General.Recovery_tactic.none
 
-  let get_fixes h pfs tenv = function
-    | SubError (idx, e) ->
-        let fixes = S.get_fixes (SMap.find idx h) pfs tenv e in
-        List.map
-          (fun (f, fs, vs, ss) ->
-            (List.map (fun f -> SubFix (idx, f)) f, fs, vs, ss))
-          fixes
-    | _ -> failwith "Implement here (get_fixes)"
-
   let can_fix = function
     | SubError (_, e) -> S.can_fix e
     | _ -> false (* TODO *)
+
+  let get_fixes h =
+    let open Delayed.Syntax in
+    function
+    | SubError (idx, e) ->
+        let+ fixes = S.get_fixes (SMap.find idx h) e in
+        List.map (fun f -> SubFix (idx, f)) fixes
+    | _ -> failwith "Implement here (get_fixes)"
 
   let apply_fix h f =
     let open Delayed.Syntax in

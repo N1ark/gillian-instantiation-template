@@ -216,20 +216,20 @@ module Make (S : MyMonadicSMemory.S) :
         | None -> failwith "Invalid index in get_recovery_tactic")
     | _ -> Gillian.General.Recovery_tactic.none
 
-  let get_fixes (b, _) pfs tenv = function
-    | SubError (idx, e) ->
-        let v = ExpMap.find idx b in
-        let mapper (fs, fml, t, c) =
-          (List.map (fun f -> SubFix (idx, f)) fs, fml, t, c)
-        in
-        List.map mapper (S.get_fixes v pfs tenv e)
-    | _ -> failwith "Invalid error in get_fixes"
-
   let can_fix = function
     | SubError (_, e) -> S.can_fix e
     | MissingCell _ -> false
     | OutOfBounds _ -> false
     | MissingLength -> false
+
+  let get_fixes (b, _) =
+    let open Delayed.Syntax in
+    function
+    | SubError (idx, e) ->
+        let v = ExpMap.find idx b in
+        let+ fixes = S.get_fixes v e in
+        List.map (fun f -> SubFix (idx, f)) fixes
+    | _ -> failwith "Invalid error in get_fixes"
 
   let apply_fix (b, n) = function
     | SubFix (idx, f) -> (

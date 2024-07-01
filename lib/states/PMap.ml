@@ -78,7 +78,8 @@ struct
 
   let show s = Format.asprintf "%a" pp s
 
-  type c_fix_t = SubFix of Expr.t * S.c_fix_t [@@deriving show]
+  type c_fix_t = SubFix of Expr.t * S.c_fix_t | AddIndexForLVar of Expr.t
+  [@@deriving show]
 
   type err_t =
     | MissingCell of Expr.t
@@ -328,21 +329,26 @@ struct
     | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
     | _ -> Gillian.General.Recovery_tactic.none
 
-  let get_fixes (h, _) pfs tenv = function
-    | SubError (idx, e) ->
-        let fixes = S.get_fixes (ExpMap.find idx h) pfs tenv e in
-        List.map
-          (fun (f, fs, vs, ss) ->
-            (List.map (fun f -> SubFix (idx, f)) f, fs, vs, ss))
-          fixes
-    | _ -> failwith "Implement here (get_fixes)"
-
   let can_fix = function
     | SubError (_, e) -> S.can_fix e
+    | InvalidIndexValue (LVar _) -> true
     | _ -> false (* TODO *)
+
+  let get_fixes (h, _) =
+    let open Delayed.Syntax in
+    let open Formula.Infix in
+    function
+    | SubError (idx, e) ->
+        let+ fixes = S.get_fixes (ExpMap.find idx h) e in
+        List.map (fun f -> SubFix (idx, f)) fixes
+    | InvalidIndexValue (LVar _ as v) ->
+        let loc = I.make_fresh () in
+        Delayed.return ~learned:[ v #== loc ] [ AddIndexForLVar v ]
+    | _ -> failwith "Implement here (get_fixes)"
 
   let apply_fix (h, d) f =
     let open Delayed.Syntax in
+    let open Formula.Infix in
     match f with
     | SubFix (idx, f) -> (
         let s = ExpMap.find idx h in
@@ -350,6 +356,12 @@ struct
         match r with
         | Ok s' -> Ok (ExpMap.add idx s' h, d)
         | Error e -> Error (SubError (idx, e)))
+    | AddIndexForLVar e ->
+        let loc = I.make_fresh () in
+        let s = S.empty () in
+        let h' = ExpMap.add loc s h in
+        let d' = modify_domain (fun d -> loc :: d) d in
+        DR.ok ~learned:[ loc #== e ] (h', d')
 end
 
 module Make (I : PMapIndex) (S : MyMonadicSMemory.S) =

@@ -184,27 +184,22 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | S2 s2, E2 e2 -> S2.get_recovery_tactic s2 e2
     | _ -> failwith "get_recovery_tactic: mismatched arguments"
 
-  let get_fixes s pfs tenv e =
-    match (s, e) with
-    | S1 s1, E1 e1 ->
-        let fixes = S1.get_fixes s1 pfs tenv e1 in
-        List.map
-          (fun (fxs, fml, vars, lvars) ->
-            (List.map (fun fx -> F1 fx) fxs, fml, vars, lvars))
-          fixes
-    | S2 s2, E2 e2 ->
-        let fixes = S2.get_fixes s2 pfs tenv e2 in
-        List.map
-          (fun (fxs, fml, vars, lvars) ->
-            (List.map (fun fx -> F2 fx) fxs, fml, vars, lvars))
-          fixes
-    | _ -> failwith "get_fixes: mismatched arguments"
-
   let can_fix = function
     | E1 s1 -> S1.can_fix s1
     | E2 s2 -> S2.can_fix s2
     | MissingState -> false (* TODO... *)
     | MismatchedState -> false
+
+  let get_fixes s e =
+    let open Delayed.Syntax in
+    match (s, e) with
+    | S1 s1, E1 e1 ->
+        let+ fixes = S1.get_fixes s1 e1 in
+        List.map (fun fx -> F1 fx) fixes
+    | S2 s2, E2 e2 ->
+        let+ fixes = S2.get_fixes s2 e2 in
+        List.map (fun fx -> F2 fx) fixes
+    | _ -> failwith "get_fixes: mismatched arguments"
 
   let apply_fix s f =
     let open Delayed.Syntax in
