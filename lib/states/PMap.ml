@@ -38,7 +38,7 @@ module LocationIndex : PMapIndex = struct
 
   let is_valid_index = function
     | (Expr.Lit (Loc _) | Expr.ALoc _) as l -> Delayed.return (Some l)
-    | Expr.LVar _ as e -> (
+    | e when not (Expr.is_concrete e) -> (
         let open Delayed.Syntax in
         let* loc = Delayed.resolve_loc e in
         match loc with
@@ -78,11 +78,11 @@ struct
 
   let show s = Format.asprintf "%a" pp s
 
-  type c_fix_t = SubFix of Expr.t * S.c_fix_t | AddIndexForLVar of Expr.t
+  type c_fix_t = SubFix of Expr.t * S.c_fix_t | AddIndex of Expr.t * Expr.t
   [@@deriving show]
 
   type err_t =
-    | MissingCell of Expr.t
+    | MissingCell of (Expr.t * Expr.t)
     | NotAllocated of Expr.t
     | AlreadyAllocated of Expr.t
     | InvalidIndexValue of Expr.t
@@ -145,9 +145,10 @@ struct
         let* match_val = ExpMap.sym_find_opt idx' h in
         match (match_val, d) with
         | Some (h', idx'', v), _ -> DR.ok (h', idx'', v)
-        | None, None -> DR.error (MissingCell idx')
+        | None, None -> DR.error (MissingCell (idx, idx'))
         | None, Some d ->
-            if%sat Formula.SetMem (idx', d) then DR.error (MissingCell idx')
+            if%sat Formula.SetMem (idx', d) then
+              DR.error (MissingCell (idx, idx'))
             else DR.error (NotAllocated idx'))
 
   let update_entry (h, d) idx s =
@@ -164,8 +165,8 @@ struct
           match (r, I.mode) with
           | Ok (h', idx, s), _ -> DR.ok ((h', d), idx, s)
           (* In Dynamic mode, missing cells are instantiated to a default value *)
-          | Error (NotAllocated idx), Dynamic | Error (MissingCell idx), Dynamic
-            ->
+          | Error (NotAllocated idx), Dynamic
+          | Error (MissingCell (_, idx)), Dynamic ->
               let s, _ = S.instantiate I.default_instantiation in
               let h' = ExpMap.add idx s h in
               let d' = modify_domain (fun d -> idx :: d) d in
@@ -213,8 +214,8 @@ struct
             match r with
             | Ok (s', v) -> Ok (update_entry (h', d) idx s', v)
             | Error e -> Error (SubError (idx, e)))
-        | Error (NotAllocated idx), Dynamic | Error (MissingCell idx), Dynamic
-          -> (
+        | Error (NotAllocated idx), Dynamic
+        | Error (MissingCell (_, idx)), Dynamic -> (
             let s, _ = S.instantiate I.default_instantiation in
             let h' = ExpMap.add idx s h in
             let d' = modify_domain (fun d -> idx :: d) d in
@@ -239,7 +240,7 @@ struct
         | Ok (h', idx, s) ->
             let+ s' = S.produce pred s args in
             update_entry (h', d) idx s'
-        | Error (MissingCell idx) ->
+        | Error (MissingCell (_, idx)) ->
             let s = S.empty () in
             let+ s' = S.produce pred s args in
             update_entry (h, d) idx s'
@@ -331,20 +332,17 @@ struct
 
   let can_fix = function
     | SubError (_, e) -> S.can_fix e
-    | InvalidIndexValue (LVar _) -> true
+    | MissingCell _ -> true
     | _ -> false (* TODO *)
 
   let get_fixes (h, _) =
     let open Delayed.Syntax in
-    let open Formula.Infix in
     function
     | SubError (idx, e) ->
         let+ fixes = S.get_fixes (ExpMap.find idx h) e in
         List.map (fun f -> SubFix (idx, f)) fixes
-    | InvalidIndexValue (LVar _ as v) ->
-        let loc = I.make_fresh () in
-        Delayed.return ~learned:[ v #== loc ] [ AddIndexForLVar v ]
-    | _ -> failwith "Implement here (get_fixes)"
+    | MissingCell (v, l) -> Delayed.return [ AddIndex (v, l) ]
+    | _ -> failwith "PMap: implement get_fixes"
 
   let apply_fix (h, d) f =
     let open Delayed.Syntax in
@@ -356,12 +354,11 @@ struct
         match r with
         | Ok s' -> Ok (ExpMap.add idx s' h, d)
         | Error e -> Error (SubError (idx, e)))
-    | AddIndexForLVar e ->
-        let loc = I.make_fresh () in
+    | AddIndex (v, loc) ->
         let s = S.empty () in
         let h' = ExpMap.add loc s h in
         let d' = modify_domain (fun d -> loc :: d) d in
-        DR.ok ~learned:[ loc #== e ] (h', d')
+        DR.ok ~learned:[ v #== loc ] (h', d')
 end
 
 module Make (I : PMapIndex) (S : MyMonadicSMemory.S) =

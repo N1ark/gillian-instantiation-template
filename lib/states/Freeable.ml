@@ -9,7 +9,7 @@ type 'a freeable = None | Freed | SubState of 'a [@@deriving yojson, show]
 module Make (S : MyMonadicSMemory.S) :
   MyMonadicSMemory.S with type t = S.t freeable = struct
   type t = S.t freeable [@@deriving yojson, show]
-  type c_fix_t = SubFix of S.c_fix_t [@@deriving show]
+  type c_fix_t = AddState | SubFix of S.c_fix_t [@@deriving show]
 
   let pp fmt = function
     | None -> Fmt.string fmt "None"
@@ -178,7 +178,11 @@ module Make (S : MyMonadicSMemory.S) :
     | SubError e, SubState s ->
         let+ fixes = S.get_fixes s e in
         List.map (fun f -> SubFix f) fixes
-    | _, _ -> failwith "Implement here get_fixes"
+    | SubError e, None ->
+        let+ fixes = S.get_fixes (S.empty ()) e in
+        List.map (fun f -> SubFix f) fixes
+    | MissingResource, None -> Delayed.return [ AddState ]
+    | _, _ -> failwith "Invalid fix call"
 
   let apply_fix s f =
     let open Delayed.Syntax in
@@ -193,5 +197,7 @@ module Make (S : MyMonadicSMemory.S) :
         match r with
         | Ok s' -> Ok (simplify s')
         | Error e -> Error (SubError e))
-    | SubFix _, Freed -> failwith "Cannot apply subfix to freed state"
+    | SubFix _, _ -> failwith "Invalid SubFix fix"
+    | AddState, None -> DR.ok (SubState (S.empty ()))
+    | AddState, _ -> failwith "Invalid AddState fix"
 end

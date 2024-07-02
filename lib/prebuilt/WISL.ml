@@ -1,4 +1,18 @@
 open Utils
+module Delayed = Gillian.Monadic.Delayed
+module BaseMemory = PMap (LocationIndex) (Freeable (MList (Exclusive)))
+
+module WISLParamInjection : Injection with type t = BaseMemory.t = struct
+  include DummyInject (BaseMemory)
+
+  let post_execute_action _ (s, args, rets) =
+    let rets' =
+      match (args, rets) with
+      | _, ([] as rets) | [], rets -> rets
+      | idx :: _, rets -> idx :: rets
+    in
+    Delayed.return (s, args, rets')
+end
 
 module WISLSubst : NameMap = struct
   let action_substitutions =
@@ -21,4 +35,4 @@ module ExternalSemantics =
   Gillian.General.External.Dummy (ParserAndCompiler.Annot)
 
 module MonadicSMemory =
-  Mapper (WISLSubst) (PMap (LocationIndex) (Freeable (MList (Exclusive))))
+  Mapper (WISLSubst) (Injector (WISLParamInjection) (BaseMemory))

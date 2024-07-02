@@ -20,7 +20,8 @@ module Make (S : MyMonadicSMemory.S) :
 
   let show s = Format.asprintf "%a" pp s
 
-  type c_fix_t = SubFix of Expr.t * S.c_fix_t [@@deriving show]
+  type c_fix_t = SubFix of Expr.t * S.c_fix_t | AddCell of Expr.t
+  [@@deriving show]
 
   type err_t =
     | OutOfBounds of Expr.t * Expr.t (* Accessed index, list length *)
@@ -218,7 +219,7 @@ module Make (S : MyMonadicSMemory.S) :
 
   let can_fix = function
     | SubError (_, e) -> S.can_fix e
-    | MissingCell _ -> false
+    | MissingCell _ -> true
     | OutOfBounds _ -> false
     | MissingLength -> false
 
@@ -229,14 +230,19 @@ module Make (S : MyMonadicSMemory.S) :
         let v = ExpMap.find idx b in
         let+ fixes = S.get_fixes v e in
         List.map (fun f -> SubFix (idx, f)) fixes
-    | _ -> failwith "Invalid error in get_fixes"
+    | MissingCell idx -> Delayed.return [ AddCell idx ]
+    | _ -> failwith "MList: implement get_fixes"
 
-  let apply_fix (b, n) = function
+  let apply_fix (b, n) =
+    let open Delayed.Syntax in
+    function
     | SubFix (idx, f) -> (
-        let open Delayed.Syntax in
         let s = ExpMap.find idx b in
         let+ r = S.apply_fix s f in
         match r with
         | Ok s' -> Ok (ExpMap.add idx s' b, n)
         | Error e -> Error (SubError (idx, e)))
+    | AddCell idx ->
+        let s = S.empty () in
+        DR.ok ~learned:[ Formula.IsInt idx ] (ExpMap.add idx s b, n)
 end

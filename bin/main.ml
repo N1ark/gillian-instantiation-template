@@ -2,7 +2,7 @@ open Gillian
 open States
 
 (* Select prebuilt mode (or build one!) *)
-module Prebuilt = Prebuilt.C
+module Prebuilt = Prebuilt.WISL
 
 (* get modules *)
 module MyMem = Prebuilt.MonadicSMemory

@@ -25,7 +25,7 @@ module type Injection = sig
   val pre_execute_action : (t * Expr.t list) injection_hook
 
   (** Called with the action's name and returns after its execution. Replaces returns *)
-  val post_execute_action : (t * Expr.t list) injection_hook
+  val post_execute_action : (t * Expr.t list * Expr.t list) injection_hook
 end
 
 module DummyInject (S : sig
@@ -38,7 +38,7 @@ end) : Injection with type t = S.t = struct
   let pre_consume _ = ret
   let post_consume _ = ret
   let pre_execute_action _ = ret
-  let post_execute_action _ = ret
+  let post_execute_action _ = Delayed.return ~learned:[] ~learned_types:[]
 end
 
 module Make (I : Injection) (S : MyMonadicSMemory.S with type t = I.t) :
@@ -61,6 +61,8 @@ module Make (I : Injection) (S : MyMonadicSMemory.S with type t = I.t) :
     let a_str = action_to_str a in
     let* s', args' = I.pre_execute_action a_str (s, args) in
     let** s'', returns = execute_action a s' args' in
-    let* s''', returns' = I.post_execute_action a_str (s'', returns) in
+    let* s''', _, returns' =
+      I.post_execute_action a_str (s'', args', returns)
+    in
     Delayed_result.ok (s''', returns')
 end

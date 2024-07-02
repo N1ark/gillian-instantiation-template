@@ -36,11 +36,13 @@ module EnhancedBaseMemory : MyMonadicSMemory with type t = BaseMemory.t = struct
         if%sat size #== (Expr.int 0) then DR.ok (s, [])
         else
           let h, d = s in
-          let** h, _, src = validate_index (h, d) src_loc in
-          let** h, dest_idx, dest = validate_index (h, d) dst_loc in
+          let** h, src_loc', src = validate_index (h, d) src_loc in
+          let** h, dest_loc', dest = validate_index (h, d) dst_loc in
           match (src, dest) with
-          | States.Freeable.None, _ -> DR.error (MissingCell src_loc)
-          | _, States.Freeable.None -> DR.error (MissingCell dst_loc)
+          | States.Freeable.None, _ ->
+              DR.error (MissingCell (src_loc, src_loc'))
+          | _, States.Freeable.None ->
+              DR.error (MissingCell (dst_loc, dest_loc'))
           | States.Freeable.Freed, _ | _, States.Freeable.Freed ->
               failwith "Tried moving freed state"
           | States.Freeable.SubState src, States.Freeable.SubState dest ->
@@ -49,7 +51,7 @@ module EnhancedBaseMemory : MyMonadicSMemory with type t = BaseMemory.t = struct
                   (fun _ -> failwith "")
               in
               let s' =
-                update_entry (h, d) dest_idx (States.Freeable.SubState dest)
+                update_entry (h, d) dest_loc' (States.Freeable.SubState dest)
               in
               DR.ok (s', []))
     | _ -> failwith "Invalid arguments for mem_move"
