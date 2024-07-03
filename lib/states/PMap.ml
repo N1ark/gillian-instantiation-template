@@ -364,6 +364,5 @@ end
 module Make (I : PMapIndex) (S : MyMonadicSMemory.S) =
   Make_ (I) (S) (MyUtils.ExpMap)
 
-module MakeEnt (I : PMapIndex) (S : MyMonadicSMemory.S) :
-  MyMonadicSMemory.S with type t = S.t MyUtils.ExpMapEnt.t * Expr.t option =
+module MakeEnt (I : PMapIndex) (S : MyMonadicSMemory.S) =
   Make_ (I) (S) (MyUtils.ExpMapEnt)
