@@ -1,10 +1,11 @@
 open Gillian.Monadic
 open Utils
 open Gil_syntax
+module ExpMap = States.MyUtils.ExpMap
 
 (* open Delayed.Syntax *)
 
-(* Helpers *)
+(* Allow freeable to always free (since it's ok in JS) *)
 module UnsoundAlwaysOwned (S : States.MyMonadicSMemory.S) :
   States.MyMonadicSMemory.S with type t = S.t = struct
   include S
@@ -12,12 +13,16 @@ module UnsoundAlwaysOwned (S : States.MyMonadicSMemory.S) :
   let is_fully_owned _ _ = Formula.True
 end
 
+(* Default instantiation is Nono *)
 module StringIndex = struct
   include StringIndex
 
   let default_instantiation = [ Expr.Lit Nono ]
 end
 
+(* left side is a PMap that doesn't need any arguments, while
+   the right hand side is an Agreement that requires the value.
+   Split accordingly (unpatched product gives the args to both sides) *)
 module PatchedProduct
     (IDs : IDs)
     (S1 : States.MyMonadicSMemory.S)
@@ -25,23 +30,20 @@ module PatchedProduct
   States.MyMonadicSMemory.S with type t = S1.t * S2.t = struct
   include Product (IDs) (S1) (S2)
 
-  (* left side is a PMap that doesn't need any arguments, while
-     the right hand side is an Agreement that requires the value.
-     Split accodingly (unpatched product gives the args to both sides) *)
   let instantiate v =
     let s1, v1 = S1.instantiate [] in
     let s2, v2 = S2.instantiate v in
     ((s1, s2), v1 @ v2)
 end
 
+(* the "Props" predicate considers its out an in, so it must be removed
+   from consumption and then checked for equality. *)
 module MoveInToOut (S : States.MyMonadicSMemory.S) :
   States.MyMonadicSMemory.S with type t = S.t = struct
   include S
 
   let consume pred s ins =
     match (pred_to_str pred, ins) with
-    (* the "Props" predicate considers its out an in, so it must be removed
-       from consumption and then checked for equality. *)
     | "domainset", [ out ] -> (
         let open Delayed_result.Syntax in
         let** s', outs = S.consume pred s [] in
@@ -58,6 +60,7 @@ module MoveInToOut (S : States.MyMonadicSMemory.S) :
     | _ -> consume pred s ins
 end
 
+(* Outer substitutions for JS *)
 module JSSubst : NameMap = struct
   let action_substitutions =
     [
@@ -71,18 +74,19 @@ module JSSubst : NameMap = struct
 
   let pred_substitutions =
     [
-      (* One of these two is wrong *)
       ("Cell", "left_points_to");
       ("Props", "left_inner_domainset");
       ("Metadata", "right_agree");
     ]
 end
 
+(* Substitutions for internal PMap (avoids name clash) *)
 module JSSubstInner : NameMap = struct
   let action_substitutions = [ ("inner_get_domainset", "get_domainset") ]
   let pred_substitutions = [ ("inner_domainset", "domainset") ]
 end
 
+(* Outer pred/action filter *)
 module JSFilter : FilterVals = struct
   let mode : filter_mode = ShowOnly
 
@@ -102,8 +106,18 @@ end
 
 module BaseObject = PMap (StringIndex) (Exclusive)
 
+(* - Ignore "Nono" values in the domainset
+   - Similarly to WISL, actions on the PMap return the index used *)
 module DomainsetPatchInject : Injection with type t = BaseObject.t = struct
   include DummyInject (BaseObject)
+
+  let post_execute_action _ (s, args, rets) =
+    let rets' =
+      match (args, rets) with
+      | _, ([] as rets) | [], rets -> rets
+      | idx :: _, rets -> idx :: rets
+    in
+    Delayed.return (s, args, rets')
 
   let post_consume p ((h, d), outs) =
     match (p, outs) with
@@ -127,19 +141,40 @@ module Object =
    In practice the field doesn't get accessed anyways so it not existing or being
    Freed should behave the same. A post-action injection could be used to replace
    Freed with None for better fidelity. *)
-module BaseMemory =
-  PMap
-    (LocationIndex)
-    (Freeable (UnsoundAlwaysOwned (PatchedProduct (IDs) (Object) (Agreement))))
+module BaseMemoryContent =
+  Freeable (UnsoundAlwaysOwned (PatchedProduct (IDs) (Object) (Agreement)))
 
-module JSInjection : Injection with type t = BaseMemory.t = struct
-  include DummyInject (BaseMemory)
+module BaseMemory = PMap (LocationIndex) (BaseMemoryContent)
 
-  let pre_execute_action action (s, args) =
-    match (action, args) with
-    (* Allocations are given two parameters, [empty; ###], we can ignore
-           the empty and pass the second value wich is the metadata location *)
-    | "Alloc", Expr.Lit Empty :: args | _, args -> Delayed.return (s, args)
+(* When allocating, two params are given:
+    - the address to allocate into (can be 'empty' to generate new address) - defaults to empty
+    - the metadata address, which is the value of the agreement (rhs of the object product) - defaults to null
+   Need to take that into consideration + similarly to WISL, return the index on each action. *)
+module MemoryPatchedAlloc = struct
+  include BaseMemory
+
+  (* Patch the alloc action *)
+  let execute_action a (h, d) args =
+    match (a, args) with
+    | Alloc, [ idx; v ] ->
+        let idx =
+          match idx with
+          | Expr.Lit Empty -> LocationIndex.make_fresh ()
+          | _ -> idx
+        in
+        Logging.tmi (fun f ->
+            f "Allocating -> %a, args (%a)" Expr.pp idx
+              (Fmt.list ~sep:Fmt.comma Expr.pp)
+              args);
+        let s, v = BaseMemoryContent.instantiate [ v ] in
+        let h' = ExpMap.add idx s h in
+        let d' = modify_domain (fun d -> idx :: d) d in
+        Delayed_result.ok ((h', d'), idx :: v)
+    | _, idx :: _ ->
+        let open Delayed_result.Syntax in
+        let** s', rets = execute_action a (h, d) args in
+        Delayed_result.ok (s', idx :: rets)
+    | _ -> execute_action a (h, d) args
 end
 
 (* Actual exports *)
@@ -148,4 +183,4 @@ module ParserAndCompiler = Js2jsil_lib.JS2GIL_ParserAndCompiler
 module ExternalSemantics = Semantics.External
 
 module MonadicSMemory =
-  Filter (JSFilter) (Injector (JSInjection) (Mapper (JSSubst) (BaseMemory)))
+  Filter (JSFilter) (Mapper (JSSubst) (MemoryPatchedAlloc))

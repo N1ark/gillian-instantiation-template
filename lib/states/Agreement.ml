@@ -75,7 +75,10 @@ let is_empty = function
 
 let instantiate = function
   | [ v ] -> (Some v, [])
-  | _ -> failwith "Invalid Agreement instantiation"
+  | args ->
+      failwith
+        ("Invalid Agreement instantiation: "
+        ^ Fmt.to_to_string (Fmt.list ~sep:Fmt.comma Expr.pp) args)
 
 let lvars = function
   | None -> Containers.SS.empty
