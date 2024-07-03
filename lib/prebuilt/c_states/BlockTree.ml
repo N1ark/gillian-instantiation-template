@@ -1130,18 +1130,8 @@ module M = struct
   type err_t = err [@@deriving show, yojson]
 
   type c_fix_t =
-    | AddSingle of {
-        loc : string;
-        ofs : Expr.t;
-        value : Expr.t;
-        chunk : Chunk.t;
-      }
-    | AddUnitialized of {
-        loc : string;
-        low : Expr.t;
-        high : Expr.t;
-        chunk : Chunk.t;
-      }
+    | AddSingle of { ofs : Expr.t; value : Expr.t; chunk : Chunk.t }
+    | AddUnitialized of { low : Expr.t; high : Expr.t; chunk : Chunk.t }
   [@@deriving show, yojson]
 
   type 'a or_error = ('a, err_t) Result.t
@@ -1688,41 +1678,94 @@ module M = struct
         ({ root = Some (Tree.undefined bounds); bounds = Some bounds }, [])
     | _ -> failwith "BlockTree: Invalid instantiate arguments"
 
-  let get_fixes _ _ = failwith "Not implemented: get fixes"
-  let can_fix _ = failwith "Not implemented: can fix"
-  let apply_fix _ = failwith "Not implemented: apply fix"
+  let can_fix = function
+    | MissingResource _ -> true
+    | _ -> false
 
-  (* module Lift = struct
-       open Gillian.Debugger.Utils
+  let get_fixes _ = function
+    | MissingResource (Fixable { is_store; low = ofs; chunk }) ->
+        let open CConstants.VTypes in
+        let fixes =
+          match chunk with
+          | Chunk.Mfloat32 ->
+              let new_var = LVar.alloc () in
+              let new_var_e = Expr.LVar new_var in
+              let value = Expr.EList [ Expr.string single_type; new_var_e ] in
+              Delayed.return
+                ~learned_types:[ (new_var, Type.NumberType) ]
+                [ AddSingle { ofs; value; chunk } ]
+          | Mfloat64 ->
+              let new_var = LVar.alloc () in
+              let new_var_e = Expr.LVar new_var in
+              let value = Expr.EList [ Expr.string float_type; new_var_e ] in
+              Delayed.return
+                ~learned_types:[ (new_var, Type.NumberType) ]
+                [ AddSingle { ofs; value; chunk } ]
+          | Mint64 ->
+              let new_var = LVar.alloc () in
+              let new_var_e = Expr.LVar new_var in
+              let value = Expr.EList [ Expr.string long_type; new_var_e ] in
+              Delayed.return
+                ~learned_types:[ (new_var, Type.IntType) ]
+                [ AddSingle { ofs; value; chunk } ]
+          | Mptr ->
+              let new_var1 = LVar.alloc () in
+              let new_var_e1 = Expr.LVar new_var1 in
+              let new_var2 = LVar.alloc () in
+              let new_var_e2 = Expr.LVar new_var2 in
+              let value = Expr.EList [ new_var_e1; new_var_e2 ] in
+              let null_typ =
+                if Compcert.Archi.ptr64 then Expr.string long_type
+                else Expr.string int_type
+              in
+              let null_ptr = Expr.EList [ null_typ; Expr.int 0 ] in
+              let branch1 =
+                Delayed.return
+                  ~learned_types:
+                    [ (new_var1, Type.ObjectType); (new_var2, Type.IntType) ]
+                  [ AddSingle { ofs; value; chunk } ]
+              in
+              let branch2 =
+                Delayed.return [ AddSingle { ofs; value = null_ptr; chunk } ]
+              in
+              Delayed.branches [ branch1; branch2 ]
+          | _ ->
+              let new_var = LVar.alloc () in
+              let new_var_e = Expr.LVar new_var in
+              let value = Expr.EList [ Expr.string int_type; new_var_e ] in
+              Delayed.return
+                ~learned_types:[ (new_var, Type.IntType) ]
+                [ AddSingle { ofs; value; chunk } ]
+        in
+        (* Additional fix for store operation to handle case of unitialized memory *)
+        if is_store then
+          let offset_by_chunk low chunk =
+            let open Expr.Infix in
+            let len = Expr.int (Chunk.size chunk) in
+            low + len
+          in
+          let uninit =
+            Delayed.return
+              [
+                AddUnitialized
+                  { low = ofs; high = offset_by_chunk ofs chunk; chunk };
+              ]
+          in
+          Delayed.branches [ uninit; fixes ]
+        else fixes
+    | MissingResource Unfixable -> Delayed.return []
+    | _ -> failwith "BlockTree: Invalid get_fixes arguments"
 
-       let get_variable
-           ~(make_node :
-              name:string ->
-              value:string ->
-              ?children:Variable.t list ->
-              unit ->
-              Variable.t)
-           ~loc
-           t : Variable.t =
-         match t with
-         | Freed -> make_node ~name:loc ~value:"Freed" ()
-         | Tree { bounds; root } ->
-             let bounds =
-               match bounds with
-               | None -> make_node ~name:"Bounds" ~value:"Not owned" ()
-               | Some bounds ->
-                   make_node ~name:"Bounds" ~value:""
-                     ~children:(Range.Lift.as_variables ~make_node bounds)
-                     ()
-             in
-             let root =
-               match root with
-               | None -> make_node ~name:"Tree" ~value:"Not owned" ()
-               | Some root -> Tree.Lift.as_variable ~make_node root
-             in
-             make_node ~name:loc ~value:"Allocated" ~children:[ bounds; root ] ()
-
-     end*)
+  let apply_fix s =
+    let open Delayed.Syntax in
+    function
+    | AddSingle { ofs; value; chunk } ->
+        let* sval = SVal.of_gil_expr_exn value in
+        let perm = Perm.Freeable in
+        prod_single s ofs chunk sval perm
+    | AddUnitialized { low; high; _ } ->
+        let perm = Perm.Freeable in
+        prod_hole s low high perm
 end
 
 module MT : States.MyMonadicSMemory.S = M
