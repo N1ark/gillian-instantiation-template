@@ -1370,7 +1370,7 @@ module M = struct
       match root with
       | None ->
           DR.error
-            (MissingResource (Fixable { is_store = false; low = ofs; chunk }))
+            (MissingResource (Fixable { is_store = true; low = ofs; chunk }))
       | Some root ->
           let** root = Tree.store root ofs chunk value in
           DR.of_result (with_root t root)
