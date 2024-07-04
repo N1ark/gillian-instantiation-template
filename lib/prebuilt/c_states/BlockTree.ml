@@ -17,15 +17,12 @@ type missingResourceType =
 [@@deriving show, yojson]
 
 type err =
-  | UseAfterFree
   | BufferOverrun
   | InsufficientPermission of { required : Perm.t; actual : Perm.t }
   | InvalidAlignment of { alignment : int; offset : Expr.t }
   | MissingResource of missingResourceType
   | Unhandled of string
-  | RemovingNotOwned
   | WrongMemVal
-  | MemoryNotFreed
 [@@deriving show, yojson]
 
 exception FatalErr of err
@@ -1125,8 +1122,6 @@ end
 module M = struct
   open LActions
 
-  let log_string s = Logging.verbose (fun fmt -> fmt "SHEAPTREE CHECKING: %s" s)
-
   type err_t = err [@@deriving show, yojson]
 
   type c_fix_t =
@@ -1134,13 +1129,10 @@ module M = struct
     | AddUnitialized of { low : Expr.t; high : Expr.t; chunk : Chunk.t }
   [@@deriving show, yojson]
 
-  type 'a or_error = ('a, err_t) Result.t
-  type 'a d_or_error = ('a, err_t) DR.t
-
   type t = { bounds : Range.t option; root : Tree.t option }
   [@@deriving show, yojson]
 
-  type action = mem_ac
+  type action = ac
   type pred = ga
 
   let action_to_str = str_ac
@@ -1165,16 +1157,6 @@ module M = struct
       (LActions.Zeros, [ "?" ], [ "?" ]);
       (LActions.Bounds, [ "?" ], [ "?" ]);
     ]
-
-  let pp_full fmt { bounds; root } =
-    let pp_aux fmt (bounds, root) =
-      Fmt.pf fmt "%a@ %a"
-        (Fmt.option ~none:(Fmt.any "NO BOUNDS") Range.pp)
-        bounds
-        (Fmt.option ~none:(Fmt.any "EMPTY") Tree.pp_full)
-        root
-    in
-    (Fmt.parens (Fmt.vbox pp_aux)) fmt (bounds, root)
 
   let pp fmt { bounds; root } =
     Fmt.pf fmt "%a@ %a"
@@ -1352,18 +1334,6 @@ module M = struct
   let cons_zeros = cons_simple_mem_val ~expected_mem_val:Zeros
   let prod_zeros = prod_simple_mem_val ~mem_val:Zeros
 
-  let allocated_function : t =
-    {
-      bounds = Some (Expr.zero_i, Expr.one_i);
-      root =
-        Some
-          {
-            node = Node.make_owned ~perm:Nonempty ~mem_val:(Undef Totally);
-            span = (Expr.zero_i, Expr.one_i);
-            children = None;
-          };
-    }
-
   let _check_valid_alignment chunk ofs =
     let al = Chunk.align chunk in
     let al_expr = Expr.int al in
@@ -1444,9 +1414,6 @@ module M = struct
                 DR.of_result (with_root dst_tree new_dst_root)
           else DR.error BufferOverrun
     else DR.error BufferOverrun
-
-  let is_empty_or_freed { bounds; root } =
-    Option.is_none bounds && Option.fold ~none:true ~some:Tree.is_empty root
 
   let assertions x =
     let bounds =
