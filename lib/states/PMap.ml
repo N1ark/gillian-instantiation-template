@@ -329,7 +329,9 @@ struct
     List.concat_map (fun (_, v) -> S.assertions_others v) (ExpMap.bindings h)
 
   let get_recovery_tactic (h, _) = function
-    | SubError (_, idx', e) -> S.get_recovery_tactic (ExpMap.find idx' h) e
+    | SubError (_, idx', e) ->
+        let s = ExpMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
+        S.get_recovery_tactic s e
     | _ -> Gillian.General.Recovery_tactic.none
 
   let can_fix = function
