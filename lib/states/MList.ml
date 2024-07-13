@@ -20,12 +20,10 @@ module Make (S : MyMonadicSMemory.S) :
 
   let show s = Format.asprintf "%a" pp s
 
-  type c_fix_t = SubFix of Expr.t * S.c_fix_t | AddCell of Expr.t
-  [@@deriving show]
+  type c_fix_t = SubFix of Expr.t * S.c_fix_t [@@deriving show]
 
   type err_t =
     | OutOfBounds of Expr.t * Expr.t (* Accessed index, list length *)
-    | MissingCell of Expr.t (* Accessed index *)
     | MissingLength
     | SubError of Expr.t * S.err_t
   [@@deriving show, yojson]
@@ -77,14 +75,10 @@ module Make (S : MyMonadicSMemory.S) :
     match (action, args) with
     | SubAction a, idx :: args -> (
         let** () = validate_index (b, n) idx in
-        let** b', idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
+        let* b', idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
         let+ r = S.execute_action a s args in
         match r with
-        (* HACK: For WISL compat, index appendent to the output *)
-        | Ok (s', v) ->
-            Ok
-              ( (ExpMap.add idx s' b', n),
-                if List.is_empty v then v else idx :: v )
+        | Ok (s', v) -> Ok ((ExpMap.add idx s' b', n), v)
         | Error e -> Error (SubError (idx, e)))
     | SubAction _, [] -> failwith "Missing index for sub-action"
 
@@ -94,7 +88,7 @@ module Make (S : MyMonadicSMemory.S) :
     match (pred, ins) with
     | SubPred p, idx :: ins -> (
         let** () = validate_index (b, n) idx in
-        let** b', idx, s = ExpMap.sym_find_res idx b ~err:(MissingCell idx) in
+        let* b', idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
         let+ r = S.consume p s ins in
         match r with
         | Ok (s, outs) when S.is_empty s -> Ok ((ExpMap.remove idx b', n), outs)
@@ -219,7 +213,6 @@ module Make (S : MyMonadicSMemory.S) :
 
   let can_fix = function
     | SubError (_, e) -> S.can_fix e
-    | MissingCell _ -> true
     | OutOfBounds _ -> false
     | MissingLength -> false
 
@@ -227,22 +220,18 @@ module Make (S : MyMonadicSMemory.S) :
     let open Delayed.Syntax in
     function
     | SubError (idx, e) ->
-        let v = ExpMap.find idx b in
-        let+ fixes = S.get_fixes v e in
+        let s = ExpMap.find_opt idx b |> Option.value ~default:(S.empty ()) in
+        let+ fixes = S.get_fixes s e in
         List.map (fun f -> SubFix (idx, f)) fixes
-    | MissingCell idx -> Delayed.return [ AddCell idx ]
     | _ -> failwith "MList: implement get_fixes"
 
   let apply_fix (b, n) =
     let open Delayed.Syntax in
     function
     | SubFix (idx, f) -> (
-        let s = ExpMap.find idx b in
+        let s = ExpMap.find_opt idx b |> Option.value ~default:(S.empty ()) in
         let+ r = S.apply_fix s f in
         match r with
         | Ok s' -> Ok (ExpMap.add idx s' b, n)
         | Error e -> Error (SubError (idx, e)))
-    | AddCell idx ->
-        let s = S.empty () in
-        DR.ok ~learned:[ Formula.IsInt idx ] (ExpMap.add idx s b, n)
 end

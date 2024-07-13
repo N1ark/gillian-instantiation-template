@@ -39,10 +39,9 @@ module EnhancedBaseMemory : MyMonadicSMemory with type t = BaseMemory.t = struct
           let** h, src_loc', src = validate_index (h, d) src_loc in
           let** h, dest_loc', dest = validate_index (h, d) dst_loc in
           match (src, dest) with
-          | States.Freeable.None, _ ->
-              DR.error (MissingCell (src_loc, src_loc'))
-          | _, States.Freeable.None ->
-              DR.error (MissingCell (dst_loc, dest_loc'))
+          (* TODO: proper miss errors here *)
+          | States.Freeable.None, _ -> DR.error (NotAllocated src_loc')
+          | _, States.Freeable.None -> DR.error (NotAllocated dst_loc)
           | States.Freeable.Freed, _ | _, States.Freeable.Freed ->
               failwith "Tried moving freed state"
           | States.Freeable.SubState src, States.Freeable.SubState dest ->

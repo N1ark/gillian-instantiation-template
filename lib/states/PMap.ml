@@ -78,17 +78,21 @@ struct
 
   let show s = Format.asprintf "%a" pp s
 
-  type c_fix_t = SubFix of Expr.t * S.c_fix_t | AddIndex of Expr.t * Expr.t
+  type c_fix_t =
+    | SubFix of
+        Expr.t * Expr.t * S.c_fix_t (* Original index, map index, error *)
+    | AddDomainSet
   [@@deriving show]
 
   type err_t =
-    | MissingCell of (Expr.t * Expr.t)
     | NotAllocated of Expr.t
     | AlreadyAllocated of Expr.t
     | InvalidIndexValue of Expr.t
     | MissingDomainSet
     | AllocDisallowedInDynamic
-    | SubError of Expr.t * S.err_t
+    | DomainSetNotFullyOwned
+    | SubError of
+        Expr.t * Expr.t * S.err_t (* Original index, map index, error *)
   [@@deriving show, yojson]
 
   type action = Alloc | GetDomainSet | SubAction of S.action
@@ -145,10 +149,14 @@ struct
         let* match_val = ExpMap.sym_find_opt idx' h in
         match (match_val, d) with
         | Some (h', idx'', v), _ -> DR.ok (h', idx'', v)
-        | None, None -> DR.error (MissingCell (idx, idx'))
+        (* If the cell is not found, it is initialised to empty. Trust the below state
+           models to raise a Miss error, that will then be wrapped and taken care of.
+           Otherwise we would need to raise a miss error that doesn't make sense since it can't
+           really be fixed; there is no 'cell' predicate in the PMap, it relies on the sub
+           states' predicates being extended with an index in-argument. *)
+        | None, None -> DR.ok (h, idx', S.empty ())
         | None, Some d ->
-            if%sat Formula.SetMem (idx', d) then
-              DR.error (MissingCell (idx, idx'))
+            if%sat Formula.SetMem (idx', d) then DR.ok (h, idx', S.empty ())
             else DR.error (NotAllocated idx'))
 
   let update_entry (h, d) idx s =
@@ -161,22 +169,21 @@ struct
     | SubAction _, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args -> (
         let* r = validate_index (h, d) idx in
-        let** (h, d), idx, s =
-          match (r, I.mode) with
-          | Ok (h', idx, s), _ -> DR.ok ((h', d), idx, s)
+        let** m, idx', s =
+          match r with
+          | Ok (h', idx, s) -> DR.ok ((h', d), idx, s)
           (* In Dynamic mode, missing cells are instantiated to a default value *)
-          | Error (NotAllocated idx), Dynamic
-          | Error (MissingCell (_, idx)), Dynamic ->
+          | Error (NotAllocated idx) when I.mode = Dynamic ->
               let s, _ = S.instantiate I.default_instantiation in
               let h' = ExpMap.add idx s h in
               let d' = modify_domain (fun d -> idx :: d) d in
               DR.ok ((h', d'), idx, s)
-          | Error e, _ -> DR.error e
+          | Error e -> DR.error e
         in
         let+ r = S.execute_action action s args in
         match r with
-        | Ok (s', v) -> Ok (update_entry (h, d) idx s', v)
-        | Error e -> Error (SubError (idx, e)))
+        | Ok (s', v) -> Ok (update_entry m idx' s', v)
+        | Error e -> Error (SubError (idx, idx', e)))
     | Alloc, args ->
         if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
         else
@@ -198,7 +205,7 @@ struct
               let _, pos = ExpMap.partition (fun _ s -> S.is_empty s) h in
               let keys = List.map fst (ExpMap.bindings pos) in
               DR.ok ((h, Some d), [ Expr.list keys ])
-            else DR.error MissingDomainSet
+            else DR.error DomainSetNotFullyOwned
         | None -> DR.error MissingDomainSet)
     | GetDomainSet, _ -> failwith "Invalid arguments for get_domainset"
 
@@ -209,20 +216,19 @@ struct
     | SubPred pred, idx :: ins -> (
         let* res = validate_index (h, d) idx in
         match (res, I.mode) with
-        | Ok (h', idx, s), _ -> (
+        | Ok (h', idx', s), _ -> (
             let+ r = S.consume pred s ins in
             match r with
-            | Ok (s', v) -> Ok (update_entry (h', d) idx s', v)
-            | Error e -> Error (SubError (idx, e)))
-        | Error (NotAllocated idx), Dynamic
-        | Error (MissingCell (_, idx)), Dynamic -> (
+            | Ok (s', v) -> Ok (update_entry (h', d) idx' s', v)
+            | Error e -> Error (SubError (idx, idx', e)))
+        | Error (NotAllocated idx'), Dynamic -> (
             let s, _ = S.instantiate I.default_instantiation in
-            let h' = ExpMap.add idx s h in
-            let d' = modify_domain (fun d -> idx :: d) d in
+            let h' = ExpMap.add idx' s h in
+            let d' = modify_domain (fun d -> idx' :: d) d in
             let+ r = S.consume pred s ins in
             match r with
-            | Ok (s', v) -> Ok (update_entry (h', d') idx s', v)
-            | Error e -> Error (SubError (idx, e)))
+            | Ok (s', v) -> Ok (update_entry (h', d') idx' s', v)
+            | Error e -> Error (SubError (idx, idx', e)))
         | Error e, _ -> DR.error e)
     | DomainSet, [] -> (
         match d with
@@ -240,10 +246,6 @@ struct
         | Ok (h', idx, s) ->
             let+ s' = S.produce pred s args in
             update_entry (h', d) idx s'
-        | Error (MissingCell (_, idx)) ->
-            let s = S.empty () in
-            let+ s' = S.produce pred s args in
-            update_entry (h, d) idx s'
         | Error _ ->
             Logging.normal (fun m ->
                 m "Warning PMap: vanishing due to invalid index");
@@ -327,38 +329,42 @@ struct
     List.concat_map (fun (_, v) -> S.assertions_others v) (ExpMap.bindings h)
 
   let get_recovery_tactic (h, _) = function
-    | SubError (idx, e) -> S.get_recovery_tactic (ExpMap.find idx h) e
+    | SubError (_, idx', e) -> S.get_recovery_tactic (ExpMap.find idx' h) e
     | _ -> Gillian.General.Recovery_tactic.none
 
   let can_fix = function
-    | SubError (_, e) -> S.can_fix e
-    | MissingCell _ -> true
+    | SubError (_, _, e) -> S.can_fix e
+    | MissingDomainSet -> true
     | _ -> false (* TODO *)
 
   let get_fixes (h, _) =
     let open Delayed.Syntax in
     function
-    | SubError (idx, e) ->
-        let+ fixes = S.get_fixes (ExpMap.find idx h) e in
-        List.map (fun f -> SubFix (idx, f)) fixes
-    | MissingCell (v, l) -> Delayed.return [ AddIndex (v, l) ]
-    | _ -> failwith "PMap: implement get_fixes"
+    | SubError (idx, idx', e) ->
+        let s = ExpMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
+        let+ fixes = S.get_fixes s e in
+        List.map (fun f -> SubFix (idx, idx', f)) fixes
+    | MissingDomainSet -> Delayed.return [ AddDomainSet ]
+    | _ -> failwith "Called get_fixes on unfixable error"
 
   let apply_fix (h, d) f =
     let open Delayed.Syntax in
     let open Formula.Infix in
     match f with
-    | SubFix (idx, f) -> (
-        let s = ExpMap.find idx h in
-        let+ r = S.apply_fix s f in
+    | SubFix (idx, idx', f) -> (
+        let s = ExpMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
+        let* r = S.apply_fix s f in
         match r with
-        | Ok s' -> Ok (ExpMap.add idx s' h, d)
-        | Error e -> Error (SubError (idx, e)))
-    | AddIndex (v, loc) ->
-        let s = S.empty () in
-        let h' = ExpMap.add loc s h in
-        let d' = modify_domain (fun d -> loc :: d) d in
-        DR.ok ~learned:[ v #== loc ] (h', d')
+        | Ok s' -> DR.ok ~learned:[ idx #== idx' ] (ExpMap.add idx' s' h, d)
+        | Error e -> DR.error (SubError (idx, idx', e)))
+    | AddDomainSet -> (
+        match d with
+        | Some _ -> failwith "AddDomainSet on non-empty domain"
+        | None ->
+            let lvar = LVar.alloc () in
+            Delayed.return
+              ~learned_types:[ (lvar, Type.SetType) ]
+              (Ok (h, Some (Expr.LVar lvar))))
 end
 
 module Make (I : PMapIndex) (S : MyMonadicSMemory.S) =

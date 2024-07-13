@@ -56,16 +56,17 @@ module ExpMap : SymExprMap = struct
     match Temp.find_opt k m with
     | Some v -> Delayed.return (Some (m, k, v)) (* Direct match *)
     | None ->
-        let rec find_match = function
-          | _, [] -> Delayed.return None
-          | m, (k', v) :: tl ->
+        let rec find_match m aux =
+          match aux with
+          | [] -> Delayed.return None
+          | (k', v) :: tl ->
               (* let* k' = Delayed.reduce k' in *)
               if%sat Formula.Infix.(k' #== k) then
                 (* let m' = Temp.add k' v (Temp.remove k m) in *)
                 Delayed.return (Some (m, k', v))
-              else find_match (m, tl)
+              else find_match m tl
         in
-        find_match (m, bindings m)
+        find_match m (bindings m)
 
   let sym_find_default k m ~default =
     let open Delayed.Syntax in

@@ -38,15 +38,13 @@ let empty () : t = None
 
 let execute_action action s args =
   match (action, s, args) with
-  | Load, None, _ -> DR.error MissingState
+  | _, None, _ -> DR.error MissingState
   | Load, Some v, [] -> DR.ok (Some v, [ v ])
-  | Load, _, _ -> failwith "Invalid Load action"
-  | Store, None, _ -> DR.error MissingState
   | Store, Some _, [ v' ] -> DR.ok (Some v', [])
-  | Store, _, _ ->
+  | a, _, args ->
       failwith
-        ("Invalid Store action, got args "
-        ^ Fmt.to_to_string (Fmt.Dump.list Values.pp) args)
+        (Fmt.str "Invalid action %s with state %a and args %a" (action_to_str a)
+           pp s (Fmt.Dump.list Expr.pp) args)
 
 let consume core_pred s args =
   match (core_pred, s, args) with
@@ -110,7 +108,8 @@ let can_fix = function
 
 let get_fixes _ = function
   | MissingState ->
-      Delayed.return [ FAddState (LVar (Generators.fresh_svar ())) ]
+      let var = Expr.LVar (Generators.fresh_svar ()) in
+      Delayed.return [ FAddState var ]
 
 let apply_fix _ = function
   | FAddState v -> DR.ok (Some v)

@@ -9,7 +9,7 @@ type 'a freeable = None | Freed | SubState of 'a [@@deriving yojson, show]
 module Make (S : MyMonadicSMemory.S) :
   MyMonadicSMemory.S with type t = S.t freeable = struct
   type t = S.t freeable [@@deriving yojson, show]
-  type c_fix_t = AddState | SubFix of S.c_fix_t [@@deriving show]
+  type c_fix_t = SubFix of S.c_fix_t | AddFreed [@@deriving show]
 
   let pp fmt = function
     | None -> Fmt.string fmt "None"
@@ -19,7 +19,8 @@ module Make (S : MyMonadicSMemory.S) :
   type err_t =
     | DoubleFree
     | UseAfterFree
-    | MissingResource
+    | NotEnoughResourceToFree
+    | MissingFreed
     | SubError of S.err_t
   [@@deriving show, yojson]
 
@@ -76,9 +77,9 @@ module Make (S : MyMonadicSMemory.S) :
     | SubAction _, Freed -> DR.error UseAfterFree
     | Free, SubState s ->
         if%sat S.is_fully_owned s args then DR.ok (Freed, [])
-        else DR.error MissingResource
+        else DR.error NotEnoughResourceToFree
     | Free, Freed -> DR.error DoubleFree
-    | Free, None -> DR.error MissingResource
+    | Free, None -> DR.error NotEnoughResourceToFree
 
   let consume pred s ins =
     let open Delayed.Syntax in
@@ -96,7 +97,7 @@ module Make (S : MyMonadicSMemory.S) :
         | Error e -> Error (SubError e))
     | FreedPred, SubState _ -> DR.error UseAfterFree
     | FreedPred, Freed -> DR.ok (empty (), [])
-    | FreedPred, None -> DR.error MissingResource
+    | FreedPred, None -> DR.error MissingFreed
 
   let produce pred s args =
     let open Delayed.Syntax in
@@ -169,7 +170,8 @@ module Make (S : MyMonadicSMemory.S) :
 
   let can_fix = function
     | SubError e -> S.can_fix e
-    | MissingResource -> true (* TODO *)
+    | MissingFreed -> true
+    | NotEnoughResourceToFree -> false (* TODO: how ? new function? :( *)
     | _ -> false
 
   let get_fixes s e =
@@ -179,12 +181,17 @@ module Make (S : MyMonadicSMemory.S) :
         let+ fixes = S.get_fixes s e in
         List.map (fun f -> SubFix f) fixes
     | SubError e, None ->
-        let+ fixes = S.get_fixes (S.empty ()) e in
-        List.map (fun f -> SubFix f) fixes
-    | MissingResource, None -> Delayed.return [ AddState ]
+        let base_fixes =
+          let+ fixes = S.get_fixes (S.empty ()) e in
+          List.map (fun f -> SubFix f) fixes
+        in
+        let freed_fixes = Delayed.return [ AddFreed ] in
+        Delayed.branches [ base_fixes; freed_fixes ]
+    | MissingFreed, _ -> Delayed.return [ AddFreed ]
     | _, _ -> failwith "Invalid fix call"
 
   let apply_fix s f =
+    Logging.tmi (fun fm -> fm "Applying fix %a to state %a" pp_c_fix_t f pp s);
     let open Delayed.Syntax in
     match (f, s) with
     | SubFix f, None -> (
@@ -198,6 +205,6 @@ module Make (S : MyMonadicSMemory.S) :
         | Ok s' -> Ok (simplify s')
         | Error e -> Error (SubError e))
     | SubFix _, _ -> failwith "Invalid SubFix fix"
-    | AddState, None -> DR.ok (SubState (S.empty ()))
-    | AddState, _ -> failwith "Invalid AddState fix"
+    | AddFreed, None -> DR.ok Freed
+    | AddFreed, _ -> failwith "Invalid AddState fix"
 end

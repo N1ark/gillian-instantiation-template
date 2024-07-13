@@ -37,14 +37,15 @@ let empty () : t = None
 let execute_action action s args =
   let open Formula.Infix in
   match (action, s, args) with
-  | Load, None, _ -> DR.error MissingState
+  | _, None, _ -> DR.error MissingState
   | Load, Some (v, q), [] -> DR.ok (Some (v, q), [ v ])
-  | Load, _, _ -> failwith "Invalid Load action"
-  | Store, None, _ -> DR.error MissingState
   | Store, Some (_, q), [ v' ] ->
       if%sat q #== (Expr.num 1.) then DR.ok (Some (v', q), [])
       else DR.error NotEnoughPermission
-  | Store, _, _ -> failwith "Invalid Store action"
+  | a, _, args ->
+      failwith
+        (Fmt.str "Invalid action %s with state %a and args %a" (action_to_str a)
+           pp s (Fmt.Dump.list Expr.pp) args)
 
 let consume core_pred s args =
   let open Formula.Infix in

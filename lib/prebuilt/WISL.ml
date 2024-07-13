@@ -12,13 +12,29 @@ module ExclusiveNull = struct
     | _ -> failwith "ExclusiveNull: instantiate: too many arguments"
 end
 
-module BaseMemory = PMap (LocationIndex) (Freeable (MList (ExclusiveNull)))
+module MemoryChunk = MList (ExclusiveNull)
+
+module ListIndexRetInjection : Injection with type t = MemoryChunk.t = struct
+  include DummyInject (MemoryChunk)
+
+  let post_execute_action _ (s, args, rets) =
+    let rets' =
+      match (args, rets) with
+      | _, ([] as rets) | [], rets -> rets
+      | idx :: _, rets -> idx :: rets
+    in
+    Delayed.return (s, args, rets')
+end
+
+module BaseMemory =
+  PMap
+    (LocationIndex)
+    (Freeable (Injector (ListIndexRetInjection) (MemoryChunk)))
 
 module MapIndexRetInjection : Injection with type t = BaseMemory.t = struct
   include DummyInject (BaseMemory)
 
   let post_execute_action a (s, args, rets) =
-    Logging.tmi (fun f -> f "Post execute action %s" a);
     match a with
     | "alloc" -> Delayed.return (s, args, rets)
     | _ ->
