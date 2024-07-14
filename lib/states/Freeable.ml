@@ -9,7 +9,6 @@ type 'a freeable = None | Freed | SubState of 'a [@@deriving yojson, show]
 module Make (S : MyMonadicSMemory.S) :
   MyMonadicSMemory.S with type t = S.t freeable = struct
   type t = S.t freeable [@@deriving yojson, show]
-  type c_fix_t = SubFix of S.c_fix_t | AddFreed [@@deriving show]
 
   let pp fmt = function
     | None -> Fmt.string fmt "None"
@@ -153,9 +152,10 @@ module Make (S : MyMonadicSMemory.S) :
     | SubState s -> S.alocs s
     | _ -> Containers.SS.empty
 
+  let lift_corepred (p, i, o) = (SubPred p, i, o)
+
   let assertions = function
-    | SubState s ->
-        List.map (fun (p, i, o) -> (SubPred p, i, o)) (S.assertions s)
+    | SubState s -> List.map lift_corepred (S.assertions s)
     | Freed -> [ (FreedPred, [], []) ]
     | None -> []
 
@@ -174,37 +174,12 @@ module Make (S : MyMonadicSMemory.S) :
     | NotEnoughResourceToFree -> false (* TODO: how ? new function? :( *)
     | _ -> false
 
-  let get_fixes s e =
-    let open Delayed.Syntax in
-    match (e, s) with
-    | SubError e, SubState s ->
-        let+ fixes = S.get_fixes s e in
-        List.map (fun f -> SubFix f) fixes
-    | SubError e, None ->
-        let base_fixes =
-          let+ fixes = S.get_fixes (S.empty ()) e in
-          List.map (fun f -> SubFix f) fixes
-        in
-        let freed_fixes = Delayed.return [ AddFreed ] in
-        Delayed.branches [ base_fixes; freed_fixes ]
-    | MissingFreed, _ -> Delayed.return [ AddFreed ]
-    | _, _ -> failwith "Invalid fix call"
-
-  let apply_fix s f =
-    Logging.tmi (fun fm -> fm "Applying fix %a to state %a" pp_c_fix_t f pp s);
-    let open Delayed.Syntax in
-    match (f, s) with
-    | SubFix f, None -> (
-        let+ r = S.apply_fix (S.empty ()) f in
-        match r with
-        | Ok s' -> Ok (simplify s')
-        | Error e -> Error (SubError e))
-    | SubFix f, SubState s -> (
-        let+ r = S.apply_fix s f in
-        match r with
-        | Ok s' -> Ok (simplify s')
-        | Error e -> Error (SubError e))
-    | SubFix _, _ -> failwith "Invalid SubFix fix"
-    | AddFreed, None -> DR.ok Freed
-    | AddFreed, _ -> failwith "Invalid AddState fix"
+  let get_fixes _ e =
+    match e with
+    | SubError e ->
+        let fixes = S.get_fixes (S.empty ()) e in
+        MyUtils.deep_map (MyAsrt.map_cp lift_corepred) fixes
+        @ [ [ MyAsrt.CorePred (FreedPred, [], []) ] ]
+    | MissingFreed -> [ [ MyAsrt.CorePred (FreedPred, [], []) ] ]
+    | _ -> failwith "Invalid fix call"
 end

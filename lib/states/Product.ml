@@ -46,7 +46,6 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
     @ List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
 
-  type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
   type err_t = E1 of S1.err_t | E2 of S2.err_t [@@deriving show, yojson]
 
   let empty () : t = (S1.empty (), S2.empty ())
@@ -114,13 +113,12 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   let lvars (s1, s2) = Containers.SS.union (S1.lvars s1) (S2.lvars s2)
   let alocs (s1, s2) = Containers.SS.union (S1.alocs s1) (S2.alocs s2)
+  let lift_corepred_1 (p, i, o) = (P1 p, i, o)
+  let lift_corepred_2 (p, i, o) = (P2 p, i, o)
 
   let assertions (s1, s2) =
-    let a1 = S1.assertions s1 in
-    let a1 = List.map (fun (p, i, o) -> (P1 p, i, o)) a1 in
-    let a2 = S2.assertions s2 in
-    let a2 = List.map (fun (p, i, o) -> (P2 p, i, o)) a2 in
-    a1 @ a2
+    (S1.assertions s1 |> List.map lift_corepred_1)
+    @ (S2.assertions s2 |> List.map lift_corepred_2)
 
   let assertions_others (s1, s2) =
     S1.assertions_others s1 @ S2.assertions_others s2
@@ -133,27 +131,9 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | E1 e -> S1.can_fix e
     | E2 e -> S2.can_fix e
 
-  let get_fixes (s1, s2) =
-    let open Delayed.Syntax in
-    function
+  let get_fixes (s1, s2) = function
     | E1 e ->
-        let+ fixes = S1.get_fixes s1 e in
-        List.map (fun f -> F1 f) fixes
+        S1.get_fixes s1 e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_1)
     | E2 e ->
-        let+ fixes = S2.get_fixes s2 e in
-        List.map (fun f -> F2 f) fixes
-
-  let apply_fix (s1, s2) =
-    let open Delayed.Syntax in
-    function
-    | F1 f -> (
-        let+ s1' = S1.apply_fix s1 f in
-        match s1' with
-        | Ok s1' -> Ok (s1', s2)
-        | Error e -> Error (E1 e))
-    | F2 f -> (
-        let+ s2' = S2.apply_fix s2 f in
-        match s2' with
-        | Ok s2' -> Ok (s1, s2')
-        | Error e -> Error (E2 e))
+        S2.get_fixes s2 e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_2)
 end

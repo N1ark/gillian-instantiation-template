@@ -99,12 +99,9 @@ let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
   (* | MissingState -> Recovery_tactic.try_unfold ??? *)
   | _ -> Recovery_tactic.none
 
-let get_fixes _ = function
-  | MissingState ->
-      Delayed.return [ FAddState (LVar (Generators.fresh_svar ())) ]
-
 let can_fix = function
   | MissingState -> true
 
-let apply_fix _ = function
-  | FAddState v -> DR.ok (Some v)
+let get_fixes _ = function
+  | MissingState ->
+      [ [ MyAsrt.CorePred (Agree, [], [ LVar (Generators.fresh_svar ()) ]) ] ]

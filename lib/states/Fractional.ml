@@ -126,6 +126,3 @@ let can_fix = function
 
 let get_fixes _ = function
   | _ -> []
-
-let apply_fix _ = function
-  | _ -> Delayed.vanish ()

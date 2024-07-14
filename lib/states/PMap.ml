@@ -78,12 +78,6 @@ struct
 
   let show s = Format.asprintf "%a" pp s
 
-  type c_fix_t =
-    | SubFix of
-        Expr.t * Expr.t * S.c_fix_t (* Original index, map index, error *)
-    | AddDomainSet
-  [@@deriving show]
-
   type err_t =
     | NotAllocated of Expr.t
     | AlreadyAllocated of Expr.t
@@ -317,9 +311,10 @@ struct
     | None -> alocs_map
     | Some d -> union alocs_map (Expr.alocs d)
 
+  let lift_corepred k (p, i, o) = (SubPred p, k :: i, o)
+
   let assertions (h, d) =
-    let pred_wrap k (p, i, o) = (SubPred p, k :: i, o) in
-    let folder k s acc = (List.map (pred_wrap k)) (S.assertions s) @ acc in
+    let folder k s acc = (List.map (lift_corepred k)) (S.assertions s) @ acc in
     let sub_assrts = ExpMap.fold folder h [] in
     match d with
     | None -> sub_assrts
@@ -340,33 +335,25 @@ struct
     | _ -> false (* TODO *)
 
   let get_fixes (h, _) =
-    let open Delayed.Syntax in
+    let open Formula.Infix in
     function
     | SubError (idx, idx', e) ->
         let s = ExpMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
-        let+ fixes = S.get_fixes s e in
-        List.map (fun f -> SubFix (idx, idx', f)) fixes
-    | MissingDomainSet -> Delayed.return [ AddDomainSet ]
+        let fixes = S.get_fixes s e in
+        List.map
+          (fun f ->
+            List.map (MyAsrt.map_cp (lift_corepred idx')) f
+            @ [ MyAsrt.Pure idx #== idx' ])
+          fixes
+    | MissingDomainSet ->
+        let lvar = LVar.alloc () in
+        [
+          [
+            MyAsrt.CorePred (DomainSet, [], [ Expr.LVar lvar ]);
+            MyAsrt.Types [ (lvar, Type.SetType) ];
+          ];
+        ]
     | _ -> failwith "Called get_fixes on unfixable error"
-
-  let apply_fix (h, d) f =
-    let open Delayed.Syntax in
-    let open Formula.Infix in
-    match f with
-    | SubFix (idx, idx', f) -> (
-        let s = ExpMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
-        let* r = S.apply_fix s f in
-        match r with
-        | Ok s' -> DR.ok ~learned:[ idx #== idx' ] (ExpMap.add idx' s' h, d)
-        | Error e -> DR.error (SubError (idx, idx', e)))
-    | AddDomainSet -> (
-        match d with
-        | Some _ -> failwith "AddDomainSet on non-empty domain"
-        | None ->
-            let lvar = LVar.alloc () in
-            Delayed.return
-              ~learned_types:[ (lvar, Type.SetType) ]
-              (Ok (h, Some (Expr.LVar lvar))))
 end
 
 module Make (I : PMapIndex) (S : MyMonadicSMemory.S) =

@@ -20,8 +20,6 @@ module Make (S : MyMonadicSMemory.S) :
 
   let show s = Format.asprintf "%a" pp s
 
-  type c_fix_t = SubFix of Expr.t * S.c_fix_t [@@deriving show]
-
   type err_t =
     | OutOfBounds of Expr.t * Expr.t (* Accessed index, list length *)
     | MissingLength
@@ -190,11 +188,12 @@ module Make (S : MyMonadicSMemory.S) :
     | Some n -> union alocs_map (Expr.alocs n)
     | None -> alocs_map
 
+  let lift_corepred k (p, i, o) = (SubPred p, k :: i, o)
+
   let assertions (b, n) =
-    let mapper k (p, i, o) = (SubPred p, k :: i, o) in
     let sub_asrts =
       ExpMap.fold
-        (fun k v acc -> acc @ List.map (mapper k) (S.assertions v))
+        (fun k v acc -> acc @ List.map (lift_corepred k) (S.assertions v))
         b []
     in
     match n with
@@ -213,25 +212,21 @@ module Make (S : MyMonadicSMemory.S) :
 
   let can_fix = function
     | SubError (_, e) -> S.can_fix e
+    | MissingLength -> true
     | OutOfBounds _ -> false
-    | MissingLength -> false
 
-  let get_fixes (b, _) =
-    let open Delayed.Syntax in
-    function
+  let get_fixes (b, _) = function
     | SubError (idx, e) ->
         let s = ExpMap.find_opt idx b |> Option.value ~default:(S.empty ()) in
-        let+ fixes = S.get_fixes s e in
-        List.map (fun f -> SubFix (idx, f)) fixes
-    | _ -> failwith "MList: implement get_fixes"
-
-  let apply_fix (b, n) =
-    let open Delayed.Syntax in
-    function
-    | SubFix (idx, f) -> (
-        let s = ExpMap.find_opt idx b |> Option.value ~default:(S.empty ()) in
-        let+ r = S.apply_fix s f in
-        match r with
-        | Ok s' -> Ok (ExpMap.add idx s' b, n)
-        | Error e -> Error (SubError (idx, e)))
+        S.get_fixes s e
+        |> List.map (fun f -> List.map (MyAsrt.map_cp (lift_corepred idx)) f)
+    | MissingLength ->
+        let lvar = LVar.alloc () in
+        [
+          [
+            MyAsrt.CorePred (Length, [], [ Expr.LVar lvar ]);
+            MyAsrt.Types [ (lvar, Type.IntType) ];
+          ];
+        ]
+    | _ -> failwith "Called get_fixes on unfixable error"
 end

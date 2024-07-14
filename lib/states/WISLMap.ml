@@ -32,8 +32,6 @@ module Make (S : MyMonadicSMemory.S) :
 
   let show s = Format.asprintf "%a" pp s
 
-  type c_fix_t = SubFix of string * S.c_fix_t [@@deriving show]
-
   type err_t =
     | MissingCell of string
     | NotAllocated of string
@@ -196,21 +194,7 @@ module Make (S : MyMonadicSMemory.S) :
     | SubError (_, e) -> S.can_fix e
     | _ -> false (* TODO *)
 
-  let get_fixes h =
-    let open Delayed.Syntax in
-    function
-    | SubError (idx, e) ->
-        let+ fixes = S.get_fixes (SMap.find idx h) e in
-        List.map (fun f -> SubFix (idx, f)) fixes
+  let get_fixes h = function
+    | SubError (idx, e) -> S.get_fixes (SMap.find idx h) e
     | _ -> failwith "Implement here (get_fixes)"
-
-  let apply_fix h f =
-    let open Delayed.Syntax in
-    match f with
-    | SubFix (idx, f) -> (
-        let s = SMap.find idx h in
-        let+ r = S.apply_fix s f in
-        match r with
-        | Ok s' -> Ok (SMap.add idx s' h)
-        | Error e -> Error (SubError (idx, e)))
 end

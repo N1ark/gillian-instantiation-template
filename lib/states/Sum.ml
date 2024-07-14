@@ -45,8 +45,6 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
     @ List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
 
-  type c_fix_t = F1 of S1.c_fix_t | F2 of S2.c_fix_t [@@deriving show]
-
   type err_t =
     | MissingState
     | MismatchedState
@@ -168,9 +166,12 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | S2 s2 -> S2.alocs s2
     | None -> Containers.SS.empty
 
+  let lift_corepred_1 (p, i, o) = (P1 p, i, o)
+  let lift_corepred_2 (p, i, o) = (P2 p, i, o)
+
   let assertions = function
-    | S1 s1 -> List.map (fun (p, i, o) -> (P1 p, i, o)) (S1.assertions s1)
-    | S2 s2 -> List.map (fun (p, i, o) -> (P2 p, i, o)) (S2.assertions s2)
+    | S1 s1 -> S1.assertions s1 |> List.map lift_corepred_1
+    | S2 s2 -> S2.assertions s2 |> List.map lift_corepred_2
     | None -> []
 
   let assertions_others = function
@@ -191,28 +192,10 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | MismatchedState -> false
 
   let get_fixes s e =
-    let open Delayed.Syntax in
     match (s, e) with
     | S1 s1, E1 e1 ->
-        let+ fixes = S1.get_fixes s1 e1 in
-        List.map (fun fx -> F1 fx) fixes
+        S1.get_fixes s1 e1 |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_1)
     | S2 s2, E2 e2 ->
-        let+ fixes = S2.get_fixes s2 e2 in
-        List.map (fun fx -> F2 fx) fixes
+        S2.get_fixes s2 e2 |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_2)
     | _ -> failwith "get_fixes: mismatched arguments"
-
-  let apply_fix s f =
-    let open Delayed.Syntax in
-    match (s, f) with
-    | S1 s1, F1 f1 -> (
-        let+ res = S1.apply_fix s1 f1 in
-        match res with
-        | Ok s1' -> Ok (S1 s1')
-        | Error e -> Error (E1 e))
-    | S2 s2, F2 f2 -> (
-        let+ res = S2.apply_fix s2 f2 in
-        match res with
-        | Ok s2' -> Ok (S2 s2')
-        | Error e -> Error (E2 e))
-    | _ -> failwith "apply_fix: mismatched arguments"
 end

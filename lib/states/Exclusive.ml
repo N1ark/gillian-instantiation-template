@@ -108,8 +108,6 @@ let can_fix = function
 
 let get_fixes _ = function
   | MissingState ->
-      let var = Expr.LVar (Generators.fresh_svar ()) in
-      Delayed.return [ FAddState var ]
-
-let apply_fix _ = function
-  | FAddState v -> DR.ok (Some v)
+      [
+        [ MyAsrt.CorePred (PointsTo, [], [ LVar (Generators.fresh_svar ()) ]) ];
+      ]

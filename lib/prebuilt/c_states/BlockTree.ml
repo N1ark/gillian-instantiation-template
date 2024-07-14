@@ -8,6 +8,7 @@ module NSVal = SVal
 module SVal = MonadicSVal
 module SVArr = SVal.SVArray
 module CoreP = Constr.Core
+module MyAsrt = States.MyAsrt
 
 let log_string s = Logging.verbose (fun fmt -> fmt "SHEAPTREE CHECKING: %s" s)
 
@@ -1652,29 +1653,14 @@ module M = struct
   let get_fixes _ = function
     | MissingResource (Fixable { is_store; low = ofs; chunk }) ->
         let open CConstants.VTypes in
+        let freeable_perm =
+          ValueTranslation.string_of_permission Perm.Freeable |> Expr.string
+        in
+        let chunk_as_expr =
+          ValueTranslation.string_of_chunk chunk |> Expr.string
+        in
         let fixes =
           match chunk with
-          | Chunk.Mfloat32 ->
-              let new_var = LVar.alloc () in
-              let new_var_e = Expr.LVar new_var in
-              let value = Expr.EList [ Expr.string single_type; new_var_e ] in
-              Delayed.return
-                ~learned_types:[ (new_var, Type.NumberType) ]
-                [ AddSingle { ofs; value; chunk } ]
-          | Mfloat64 ->
-              let new_var = LVar.alloc () in
-              let new_var_e = Expr.LVar new_var in
-              let value = Expr.EList [ Expr.string float_type; new_var_e ] in
-              Delayed.return
-                ~learned_types:[ (new_var, Type.NumberType) ]
-                [ AddSingle { ofs; value; chunk } ]
-          | Mint64 ->
-              let new_var = LVar.alloc () in
-              let new_var_e = Expr.LVar new_var in
-              let value = Expr.EList [ Expr.string long_type; new_var_e ] in
-              Delayed.return
-                ~learned_types:[ (new_var, Type.IntType) ]
-                [ AddSingle { ofs; value; chunk } ]
           | Mptr ->
               let new_var1 = LVar.alloc () in
               let new_var_e1 = Expr.LVar new_var1 in
@@ -1686,23 +1672,36 @@ module M = struct
                 else Expr.string int_type
               in
               let null_ptr = Expr.EList [ null_typ; Expr.int 0 ] in
-              let branch1 =
-                Delayed.return
-                  ~learned_types:
-                    [ (new_var1, Type.ObjectType); (new_var2, Type.IntType) ]
-                  [ AddSingle { ofs; value; chunk } ]
-              in
-              let branch2 =
-                Delayed.return [ AddSingle { ofs; value = null_ptr; chunk } ]
-              in
-              Delayed.branches [ branch1; branch2 ]
+              [
+                [
+                  MyAsrt.CorePred
+                    (Single, [ ofs; chunk_as_expr ], [ value; freeable_perm ]);
+                  MyAsrt.Types
+                    [ (new_var1, Type.ObjectType); (new_var2, Type.IntType) ];
+                ];
+                [
+                  MyAsrt.CorePred
+                    (Single, [ ofs; chunk_as_expr ], [ null_ptr; freeable_perm ]);
+                ];
+              ]
           | _ ->
+              let type_str, type_gil =
+                match chunk with
+                | Chunk.Mfloat32 -> (single_type, Type.NumberType)
+                | Chunk.Mfloat64 -> (float_type, Type.NumberType)
+                | Chunk.Mint64 -> (long_type, Type.IntType)
+                | _ -> (int_type, Type.IntType)
+              in
               let new_var = LVar.alloc () in
               let new_var_e = Expr.LVar new_var in
-              let value = Expr.EList [ Expr.string int_type; new_var_e ] in
-              Delayed.return
-                ~learned_types:[ (new_var, Type.IntType) ]
-                [ AddSingle { ofs; value; chunk } ]
+              let value = Expr.EList [ Expr.string type_str; new_var_e ] in
+              [
+                [
+                  MyAsrt.CorePred
+                    (Single, [ ofs; chunk_as_expr ], [ value; freeable_perm ]);
+                  MyAsrt.Types [ (new_var, type_gil) ];
+                ];
+              ]
         in
         (* Additional fix for store operation to handle case of unitialized memory *)
         if is_store then
@@ -1712,27 +1711,17 @@ module M = struct
             low + len
           in
           let uninit =
-            Delayed.return
+            [
               [
-                AddUnitialized
-                  { low = ofs; high = offset_by_chunk ofs chunk; chunk };
-              ]
+                MyAsrt.CorePred
+                  (Hole, [ ofs; offset_by_chunk ofs chunk ], [ freeable_perm ]);
+              ];
+            ]
           in
-          Delayed.branches [ uninit; fixes ]
+          uninit @ fixes
         else fixes
-    | MissingResource Unfixable -> Delayed.return []
+    | MissingResource Unfixable -> []
     | _ -> failwith "BlockTree: Invalid get_fixes arguments"
-
-  let apply_fix s =
-    let open Delayed.Syntax in
-    function
-    | AddSingle { ofs; value; chunk } ->
-        let* sval = SVal.of_gil_expr_exn value in
-        let perm = Perm.Freeable in
-        prod_single s ofs chunk sval perm
-    | AddUnitialized { low; high; _ } ->
-        let perm = Perm.Freeable in
-        prod_hole s low high perm
 end
 
 module MT : States.MyMonadicSMemory.S = M

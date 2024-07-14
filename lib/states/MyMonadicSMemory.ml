@@ -11,7 +11,6 @@ module type S = sig
   type t [@@deriving show, yojson]
 
   (* Helper types *)
-  type c_fix_t [@@deriving show]
   type err_t [@@deriving show, yojson]
 
   (* Type of predicates and actions  *)
@@ -65,9 +64,8 @@ module type S = sig
   val list_preds : unit -> (pred * string list * string list) list
 
   (* Fixes *)
-  val get_fixes : t -> err_t -> c_fix_t list Delayed.t
   val can_fix : err_t -> bool
-  val apply_fix : t -> c_fix_t -> (t, err_t) result Delayed.t
+  val get_fixes : t -> err_t -> pred MyAsrt.t list list
 end
 
 module Defaults = struct
@@ -100,6 +98,8 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
   (* Wrap action / consume / produce with a nice type *)
   let init = empty
 
+  type c_fix_t = pred * Expr.t list * Expr.t list
+
   let execute_action ~(action_name : string) (state : t) (args : vt list) :
       action_ret Delayed.t =
     match action_from_str action_name with
@@ -123,35 +123,38 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
     let mapping (p, ins, outs) = Asrt.GA (pred_to_str p, ins, outs) in
     List.map mapping core_preds @ formulas
 
-  let get_fixes s pfs gamma e =
-    let module Gpc = Engine.Gpc in
-    let module Pc = Monadic.Pc in
-    let open Gillian.Utils.Syntaxes.List in
-    let gpc = Gpc.make ~matching:false ~pfs ~gamma () in
-    let pc = Pc.of_gpc gpc in
-    let delayed_fixes = get_fixes s e in
-    let+ Branch.{ pc; value } = Delayed.resolve ~curr_pc:pc delayed_fixes in
-    let Pc.{ learned; learned_types; _ } = pc in
-    let learned = Formula.Set.to_list learned in
-    let kept_vars =
-      List.fold_left
-        (fun acc f -> Containers.SS.union acc (Formula.lvars f))
-        Containers.SS.empty learned
+  let get_fixes s _ _ e =
+    let rec build_fixes fix (corepreds, fmls, types, specvars) =
+      match fix with
+      | [] -> (corepreds, fmls, types, specvars)
+      | fix :: fixes -> (
+          let corepreds, fmls, types, specvars =
+            build_fixes fixes (corepreds, fmls, types, specvars)
+          in
+          match fix with
+          | MyAsrt.Emp -> (corepreds, fmls, types, specvars)
+          | MyAsrt.Pure fml -> (corepreds, fml :: fmls, types, specvars)
+          | MyAsrt.Types ts -> (corepreds, fmls, ts @ types, specvars)
+          | MyAsrt.CorePred (preds, ins, outs) ->
+              ((preds, ins, outs) :: corepreds, fmls, types, specvars))
     in
-    let kept_vars =
-      Containers.SS.union kept_vars
-        (List.map fst learned_types |> Containers.SS.of_list)
-    in
+    let fixes = get_fixes s e in
+    List.map (fun fs -> build_fixes fs ([], [], [], Containers.SS.empty)) fixes
 
-    Logging.tmi (fun f ->
-        List.iter (fun fix -> f "- fix: %s" (show_c_fix_t fix)) value);
-
-    (value, learned, learned_types, kept_vars)
+  let apply_fix s (pred, ins, outs) =
+    Delayed.map (Mem.produce pred s (ins @ outs)) Result.ok
 
   (* Override methods to keep implementations light *)
   let clear _ = empty ()
   let pp fmt s = Format.pp_print_string fmt (show s)
   let pp_err fmt e = Format.pp_print_string fmt (show_err_t e)
-  let pp_c_fix fmt f = Format.pp_print_string fmt (show_c_fix_t f)
+
+  let pp_c_fix (fmt : Format.formatter) ((p, ins, outs) : c_fix_t) : unit =
+    Format.fprintf fmt "<%s>(%a;%a)" (pred_to_str p)
+      Fmt.(list ~sep:comma Expr.pp)
+      ins
+      Fmt.(list ~sep:comma Expr.pp)
+      outs
+
   let pp_by_need _ = pp
 end
