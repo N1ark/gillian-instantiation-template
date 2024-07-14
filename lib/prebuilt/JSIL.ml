@@ -34,6 +34,8 @@ module PatchedProduct
     let s1, v1 = S1.instantiate [] in
     let s2, v2 = S2.instantiate v in
     ((s1, s2), v1 @ v2)
+
+  let pp ft (s1, s2) = Fmt.pf ft "%a with metadata %a" S1.pp s1 S2.pp s2
 end
 
 (* the "Props" predicate considers its out an in, so it must be removed
@@ -104,7 +106,22 @@ module JSFilter : FilterVals = struct
   let preds_filters = [ "Cell"; "Props"; "Metadata" ]
 end
 
-module BaseObject = PMap (StringIndex) (Exclusive)
+module BaseObject = struct
+  include PMap (StringIndex) (Exclusive)
+
+  let pp ft ((h, d) : t) =
+    let d =
+      match d with
+      | Some (Expr.ESet l) -> Some (Expr.ESet (List.sort Expr.compare l))
+      | e -> e
+    in
+    let open Fmt in
+    let pp_bindings =
+      iter_bindings ~sep:comma ExpMap.iter
+        (hbox (parens (pair ~sep:(any " :") Expr.pp Exclusive.pp)))
+    in
+    pf ft "[ @[%a@] | @[%a@] ]" pp_bindings h (option Expr.pp) d
+end
 
 (* - Ignore "Nono" values in the domainset
    - Similarly to WISL, actions on the PMap return the index used *)
@@ -175,6 +192,16 @@ module MemoryPatchedAlloc = struct
         let** s', rets = execute_action a (h, d) args in
         Delayed_result.ok (s', idx :: rets)
     | _ -> execute_action a (h, d) args
+
+  let pp ft ((h, _) : t) =
+    let open Fmt in
+    let sorted_locs_with_vals =
+      SMap.bindings h |> List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2)
+    in
+    let pp_one ft (loc, fv_pairs) =
+      pf ft "@[%s |-> %a@]" loc BaseMemoryContent.pp fv_pairs
+    in
+    (list ~sep:(any "@\n") pp_one) ft sorted_locs_with_vals
 end
 
 (* Actual exports *)
