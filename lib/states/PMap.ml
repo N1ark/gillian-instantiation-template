@@ -74,7 +74,14 @@ struct
     Format.pp_close_box fmt ();
     match d with
     | None -> Format.fprintf fmt "@\nDomainSet: None"
-    | Some d -> Format.fprintf fmt "@\nDomainSet: %a" Expr.pp d
+    | Some (Expr.ESet l) ->
+        let l' = List.sort Expr.compare l in
+        Format.fprintf fmt "@\nDomainSet: -{ %a }-"
+          (Fmt.list ~sep:Fmt.comma Expr.pp)
+          l'
+    | Some d ->
+        (* shouldn't happen *)
+        Format.fprintf fmt "@\nDomainSet: %a" Expr.pp d
 
   let show s = Format.asprintf "%a" pp s
 
