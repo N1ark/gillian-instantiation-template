@@ -27,6 +27,7 @@ module Exclusive = Exclusive
 module Fractional = Fractional
 
 (* Transformers *)
+module ALocPMap = ALocPMap.Make
 module Filter = Filter.Make
 module Freeable = Freeable.Make
 module Injector = Injector.Make

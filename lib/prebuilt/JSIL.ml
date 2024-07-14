@@ -144,34 +144,34 @@ module Object =
 module BaseMemoryContent =
   Freeable (UnsoundAlwaysOwned (PatchedProduct (IDs) (Object) (Agreement)))
 
-module BaseMemory = PMap (LocationIndex) (BaseMemoryContent)
-
 (* When allocating, two params are given:
     - the address to allocate into (can be 'empty' to generate new address) - defaults to empty
     - the metadata address, which is the value of the agreement (rhs of the object product) - defaults to null
    Need to take that into consideration + similarly to WISL, return the index on each action. *)
 module MemoryPatchedAlloc = struct
-  include BaseMemory
+  include ALocPMap (BaseMemoryContent)
+  module SS = Gillian.Utils.Containers.SS
+  module SMap = States.ALocPMap.SMap
 
   (* Patch the alloc action *)
   let execute_action a (h, d) args =
+    let open Delayed_result.Syntax in
     match (a, args) with
     | Alloc, [ idx; v ] ->
-        let idx =
+        let** idx =
           match idx with
-          | Expr.Lit Empty -> LocationIndex.make_fresh ()
-          | _ -> idx
+          | Expr.Lit Empty -> Delayed_result.ok (ALoc.alloc ())
+          | _ -> get_loc idx
         in
         Logging.tmi (fun f ->
-            f "Allocating -> %a, args (%a)" Expr.pp idx
+            f "Allocating -> %s, args (%a)" idx
               (Fmt.list ~sep:Fmt.comma Expr.pp)
               args);
         let s, v = BaseMemoryContent.instantiate [ v ] in
-        let h' = ExpMap.add idx s h in
-        let d' = modify_domain (fun d -> idx :: d) d in
-        Delayed_result.ok ((h', d'), idx :: v)
+        let h' = SMap.add idx s h in
+        let d' = modify_domain (SS.add idx) d in
+        Delayed_result.ok ((h', d'), Expr.loc_from_loc_name idx :: v)
     | _, idx :: _ ->
-        let open Delayed_result.Syntax in
         let** s', rets = execute_action a (h, d) args in
         Delayed_result.ok (s', idx :: rets)
     | _ -> execute_action a (h, d) args
