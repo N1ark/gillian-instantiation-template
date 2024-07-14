@@ -131,9 +131,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | E1 e -> S1.can_fix e
     | E2 e -> S2.can_fix e
 
-  let get_fixes (s1, s2) = function
-    | E1 e ->
-        S1.get_fixes s1 e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_1)
-    | E2 e ->
-        S2.get_fixes s2 e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_2)
+  let get_fixes = function
+    | E1 e -> S1.get_fixes e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_1)
+    | E2 e -> S2.get_fixes e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_2)
 end

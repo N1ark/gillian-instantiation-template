@@ -124,5 +124,5 @@ let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
 let can_fix = function
   | _ -> false
 
-let get_fixes _ = function
+let get_fixes = function
   | _ -> []

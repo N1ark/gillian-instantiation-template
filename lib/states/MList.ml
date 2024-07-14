@@ -204,10 +204,9 @@ module Make (S : MyMonadicSMemory.S) :
     List.concat_map (fun (_, v) -> S.assertions_others v) (ExpMap.bindings b)
 
   let get_recovery_tactic (b, _) = function
-    | SubError (idx, e) -> (
-        match ExpMap.find_opt idx b with
-        | Some s -> S.get_recovery_tactic s e
-        | None -> failwith "Invalid index in get_recovery_tactic")
+    | SubError (idx, e) ->
+        let s = ExpMap.find_opt idx b |> Option.value ~default:(S.empty ()) in
+        S.get_recovery_tactic s e
     | _ -> Gillian.General.Recovery_tactic.none
 
   let can_fix = function
@@ -215,11 +214,9 @@ module Make (S : MyMonadicSMemory.S) :
     | MissingLength -> true
     | OutOfBounds _ -> false
 
-  let get_fixes (b, _) = function
+  let get_fixes = function
     | SubError (idx, e) ->
-        let s = ExpMap.find_opt idx b |> Option.value ~default:(S.empty ()) in
-        S.get_fixes s e
-        |> List.map (fun f -> List.map (MyAsrt.map_cp (lift_corepred idx)) f)
+        S.get_fixes e |> MyUtils.deep_map (MyAsrt.map_cp (lift_corepred idx))
     | MissingLength ->
         let lvar = LVar.alloc () in
         [

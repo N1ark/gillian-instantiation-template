@@ -45,11 +45,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     List.map (fun (p, ins, outs) -> (P1 p, ins, outs)) (S1.list_preds ())
     @ List.map (fun (p, ins, outs) -> (P2 p, ins, outs)) (S2.list_preds ())
 
-  type err_t =
-    | MissingState
-    | MismatchedState
-    | E1 of S1.err_t
-    | E2 of S2.err_t
+  type err_t = MismatchedState | E1 of S1.err_t | E2 of S2.err_t
   [@@deriving show, yojson]
 
   let empty () = None
@@ -66,22 +62,22 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   let execute_action action s args =
     let open Delayed.Syntax in
-    match (action, s) with
-    | A1 action, S1 s1 -> (
+    let open DR.Syntax in
+    match action with
+    | A1 action -> (
+        let** s1 = get_s1 s in
         let+ res = S1.execute_action action s1 args in
         match res with
         | Ok (s1', v) when S1.is_empty s1' -> Ok (None, v)
         | Ok (s1', v) -> Ok (S1 s1', v)
         | Error e -> Error (E1 e))
-    | A2 action, S2 s2 -> (
+    | A2 action -> (
+        let** s2 = get_s2 s in
         let+ res = S2.execute_action action s2 args in
         match res with
         | Ok (s2', v) when S2.is_empty s2' -> Ok (None, v)
         | Ok (s2', v) -> Ok (S2 s2', v)
         | Error e -> Error (E2 e))
-    | _, None -> Delayed.return (Error MissingState)
-    | A1 _, S2 _ | A2 _, S1 _ ->
-        failwith "Sum.execute_action: mismatched arguments"
 
   let consume pred s ins =
     let open Delayed.Syntax in
@@ -188,14 +184,13 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   let can_fix = function
     | E1 s1 -> S1.can_fix s1
     | E2 s2 -> S2.can_fix s2
-    | MissingState -> false (* TODO... *)
     | MismatchedState -> false
 
-  let get_fixes s e =
-    match (s, e) with
-    | S1 s1, E1 e1 ->
-        S1.get_fixes s1 e1 |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_1)
-    | S2 s2, E2 e2 ->
-        S2.get_fixes s2 e2 |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_2)
-    | _ -> failwith "get_fixes: mismatched arguments"
+  let get_fixes e =
+    match e with
+    | E1 e1 ->
+        S1.get_fixes e1 |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_1)
+    | E2 e2 ->
+        S2.get_fixes e2 |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred_2)
+    | _ -> failwith "get_fixes: invalid error"
 end

@@ -174,11 +174,10 @@ module Make (S : MyMonadicSMemory.S) :
     | NotEnoughResourceToFree -> false (* TODO: how ? new function? :( *)
     | _ -> false
 
-  let get_fixes _ e =
-    match e with
+  let get_fixes = function
     | SubError e ->
-        let fixes = S.get_fixes (S.empty ()) e in
-        MyUtils.deep_map (MyAsrt.map_cp lift_corepred) fixes
+        (* Fix can either be inner fix, or if empty the memory is freed! *)
+        (S.get_fixes e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred))
         @ [ [ MyAsrt.CorePred (FreedPred, [], []) ] ]
     | MissingFreed -> [ [ MyAsrt.CorePred (FreedPred, [], []) ] ]
     | _ -> failwith "Invalid fix call"

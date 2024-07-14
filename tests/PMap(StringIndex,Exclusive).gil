@@ -72,7 +72,7 @@ proc test_load_when_missing_with_domainset() {
 };
 
 spec test_load_when_missing()
-  [[ True ]]
+  [[ emp ]]
   [[ (ret == {{ 0i }}) * <points_to>("field";0i) ]]
   normal
 proc test_load_when_missing() {

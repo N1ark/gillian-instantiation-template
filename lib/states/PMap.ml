@@ -334,17 +334,12 @@ struct
     | MissingDomainSet -> true
     | _ -> false (* TODO *)
 
-  let get_fixes (h, _) =
-    let open Formula.Infix in
-    function
+  let get_fixes = function
     | SubError (idx, idx', e) ->
-        let s = ExpMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
-        let fixes = S.get_fixes s e in
-        List.map
-          (fun f ->
-            List.map (MyAsrt.map_cp (lift_corepred idx')) f
-            @ [ MyAsrt.Pure idx #== idx' ])
-          fixes
+        let open Formula.Infix in
+        S.get_fixes e
+        |> MyUtils.deep_map (MyAsrt.map_cp (lift_corepred idx'))
+        |> List.map (fun f -> f @ [ MyAsrt.Pure idx #== idx' ])
     | MissingDomainSet ->
         let lvar = LVar.alloc () in
         [

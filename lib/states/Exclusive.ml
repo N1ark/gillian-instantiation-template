@@ -106,7 +106,7 @@ let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
 let can_fix = function
   | MissingState -> true
 
-let get_fixes _ = function
+let get_fixes = function
   | MissingState ->
       [
         [ MyAsrt.CorePred (PointsTo, [], [ LVar (Generators.fresh_svar ()) ]) ];

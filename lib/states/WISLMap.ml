@@ -33,7 +33,6 @@ module Make (S : MyMonadicSMemory.S) :
   let show s = Format.asprintf "%a" pp s
 
   type err_t =
-    | MissingCell of string
     | NotAllocated of string
     | InvalidIndexValue of Expr.t
     | SubError of string * S.err_t
@@ -70,7 +69,7 @@ module Make (S : MyMonadicSMemory.S) :
     | Expr.Lit (Loc idx) | Expr.ALoc idx -> (
         match SMap.find_opt idx h with
         | Some v -> DR.ok (idx, v)
-        | None -> DR.error (MissingCell idx))
+        | None -> DR.ok (idx, S.empty ()))
     | _ -> (
         let open Delayed.Syntax in
         let* idx' = Delayed.resolve_loc idx in
@@ -80,7 +79,7 @@ module Make (S : MyMonadicSMemory.S) :
             let match_val = SMap.find_opt idx' h in
             match match_val with
             | Some v -> DR.ok (idx', v)
-            | None -> DR.error (MissingCell idx')))
+            | None -> DR.ok (idx', S.empty ())))
 
   let update_entry h idx s =
     if S.is_empty s then SMap.remove idx h else SMap.add idx s h
@@ -126,10 +125,6 @@ module Make (S : MyMonadicSMemory.S) :
         let* r = validate_index h idx in
         match r with
         | Ok (idx, s) ->
-            let+ s' = S.produce pred s args in
-            update_entry h idx s'
-        | Error (MissingCell idx) ->
-            let s = S.empty () in
             let+ s' = S.produce pred s args in
             update_entry h idx s'
         | Error (InvalidIndexValue v) ->
@@ -179,9 +174,10 @@ module Make (S : MyMonadicSMemory.S) :
     let open Containers.SS in
     SMap.fold (fun _ s acc -> union acc (S.alocs s)) h empty
 
+  let lift_corepred k (p, i, o) = (p, Expr.loc_from_loc_name k :: i, o)
+
   let assertions h =
-    let pred_wrap k (p, i, o) = (p, Expr.loc_from_loc_name k :: i, o) in
-    let folder k s acc = (List.map (pred_wrap k)) (S.assertions s) @ acc in
+    let folder k s acc = (List.map (lift_corepred k)) (S.assertions s) @ acc in
     SMap.fold folder h []
 
   let assertions_others _ = []
@@ -194,7 +190,8 @@ module Make (S : MyMonadicSMemory.S) :
     | SubError (_, e) -> S.can_fix e
     | _ -> false (* TODO *)
 
-  let get_fixes h = function
-    | SubError (idx, e) -> S.get_fixes (SMap.find idx h) e
+  let get_fixes = function
+    | SubError (idx, e) ->
+        S.get_fixes e |> MyUtils.deep_map (MyAsrt.map_cp (lift_corepred idx))
     | _ -> failwith "Implement here (get_fixes)"
 end

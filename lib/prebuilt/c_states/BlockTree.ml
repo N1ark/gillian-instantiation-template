@@ -1650,7 +1650,7 @@ module M = struct
     | MissingResource _ -> true
     | _ -> false
 
-  let get_fixes _ = function
+  let get_fixes = function
     | MissingResource (Fixable { is_store; low = ofs; chunk }) ->
         let open CConstants.VTypes in
         let freeable_perm =

@@ -65,7 +65,7 @@ module type S = sig
 
   (* Fixes *)
   val can_fix : err_t -> bool
-  val get_fixes : t -> err_t -> pred MyAsrt.t list list
+  val get_fixes : err_t -> pred MyAsrt.t list list
 end
 
 module Defaults = struct
@@ -123,23 +123,22 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
     let mapping (p, ins, outs) = Asrt.GA (pred_to_str p, ins, outs) in
     List.map mapping core_preds @ formulas
 
-  let get_fixes s _ _ e =
-    let rec build_fixes fix (corepreds, fmls, types, specvars) =
+  let get_fixes _ _ _ e =
+    let rec build_fixes (corepreds, fmls, types, specvars) fix =
       match fix with
       | [] -> (corepreds, fmls, types, specvars)
-      | fix :: fixes -> (
-          let corepreds, fmls, types, specvars =
-            build_fixes fixes (corepreds, fmls, types, specvars)
-          in
-          match fix with
-          | MyAsrt.Emp -> (corepreds, fmls, types, specvars)
-          | MyAsrt.Pure fml -> (corepreds, fml :: fmls, types, specvars)
-          | MyAsrt.Types ts -> (corepreds, fmls, ts @ types, specvars)
-          | MyAsrt.CorePred (preds, ins, outs) ->
-              ((preds, ins, outs) :: corepreds, fmls, types, specvars))
+      | fix :: fixes ->
+          build_fixes
+            (match fix with
+            | MyAsrt.Emp -> (corepreds, fmls, types, specvars)
+            | MyAsrt.Pure fml -> (corepreds, fml :: fmls, types, specvars)
+            | MyAsrt.Types ts -> (corepreds, fmls, ts @ types, specvars)
+            | MyAsrt.CorePred (preds, ins, outs) ->
+                ((preds, ins, outs) :: corepreds, fmls, types, specvars))
+            fixes
     in
-    let fixes = get_fixes s e in
-    List.map (fun fs -> build_fixes fs ([], [], [], Containers.SS.empty)) fixes
+    let fixes = get_fixes e in
+    List.map (build_fixes ([], [], [], Containers.SS.empty)) fixes
 
   let apply_fix s (pred, ins, outs) =
     Delayed.map (Mem.produce pred s (ins @ outs)) Result.ok
