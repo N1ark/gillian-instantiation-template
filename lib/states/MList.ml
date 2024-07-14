@@ -150,7 +150,7 @@ module Make (S : MyMonadicSMemory.S) :
             aux (ExpMap.add (Expr.int i) (fst (S.instantiate args)) acc) (i + 1)
         in
         let b = aux ExpMap.empty 0 in
-        ((b, Some n), [ Expr.zero_i ])
+        ((b, Some n), [])
     | [] -> failwith "Invalid arguments for list instantiation"
 
   let substitution_in_place sub (b, n) =

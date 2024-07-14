@@ -24,6 +24,9 @@ module ListIndexRetInjection : Injection with type t = MemoryChunk.t = struct
       | idx :: _, rets -> idx :: rets
     in
     Delayed.return (s, args, rets')
+
+  (* Requires returning first index in list on instantiation (0) *)
+  let post_instantiate (s, rets) = (s, Expr.zero_i :: rets)
 end
 
 module BaseMemory =

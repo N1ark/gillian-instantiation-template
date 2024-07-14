@@ -52,7 +52,7 @@ proc test_free_spec_execution() {
 };
 
 spec test_invalid_free_no_resource()
-  [[ True ]]
+  [[ emp ]]
   [[ (ret == null) ]]
   normal
 proc test_invalid_free_no_resource() {

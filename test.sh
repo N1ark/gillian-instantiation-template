@@ -6,7 +6,7 @@ filter=$1
 # List files (tests/*.gil)
 is_first=true
 for file in tests/*.gil; do
-    if [ -n "$filter" ] && [[ ! $file =~ $filter ]]; then
+    if [ -n "$filter" ] && [[ ! "$file" == *"$filter"* ]]; then
         continue
     fi
 
@@ -28,7 +28,7 @@ for file in tests/*.gil; do
     sed -i '' "s/module MyMem = .*/module MyMem = $model/" bin/main.ml
 
     # Compile, run
-    esy build 2>&1 > /dev/null
-    esy x instantiation verify -a -ltmi "$file"
+    dune build 2>&1 > /dev/null
+    dune exec -- instantiation verify -a -ltmi "$file"
     mv file.log "tests/$(basename $file .gil).log"
 done

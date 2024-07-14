@@ -51,8 +51,8 @@ proc test_invalid_load(a) {
 };
 
 spec test_alloc_no_domainset()
-  [[ True ]]
-  [[ (ret == {{#a}}) * <points_to>(#a;0i) ]]
+  [[ emp ]]
+  [[ (ret == {{#a}}) * <points_to>(#a;undefined) ]]
   normal
 proc test_alloc_no_domainset() {
   e := [alloc]();
@@ -62,7 +62,7 @@ proc test_alloc_no_domainset() {
 
 spec test_alloc_domainset()
   [[ <domainset>(;-{#a}-) ]]
-  [[ (ret == {{#b}}) * <points_to>(#b;0i) * <domainset>(;-{#a, #b}-) ]]
+  [[ (ret == {{#b}}) * <points_to>(#b;undefined) * <domainset>(;-{#a, #b}-) ]]
   normal
 proc test_alloc_domainset() {
   e := [alloc]();
