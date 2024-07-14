@@ -8,7 +8,7 @@ module PFS = Engine.PFS
 
 module type S = sig
   (* Type of GIL general states *)
-  type t [@@deriving show, yojson]
+  type t [@@deriving yojson]
 
   (* Helper types *)
   type err_t [@@deriving show, yojson]
@@ -54,6 +54,7 @@ module type S = sig
   val alocs : t -> Containers.SS.t
   val substitution_in_place : Subst.t -> t -> t Delayed.t
   val get_recovery_tactic : t -> err_t -> Values.t Recovery_tactic.t
+  val pp : Format.formatter -> t -> unit
 
   (* Debug *)
 
@@ -145,8 +146,7 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
 
   (* Override methods to keep implementations light *)
   let clear _ = empty ()
-  let pp fmt s = Format.pp_print_string fmt (show s)
-  let pp_err fmt e = Format.pp_print_string fmt (show_err_t e)
+  let pp_err = pp_err_t
 
   let pp_c_fix (fmt : Format.formatter) ((p, ins, outs) : c_fix_t) : unit =
     Format.fprintf fmt "<%s>(%a;%a)" (pred_to_str p)

@@ -11,9 +11,7 @@ type err_t = MissingState [@@deriving show, yojson]
 type action = Load | Store
 type pred = PointsTo
 
-let pp fmt = function
-  | None -> Fmt.string fmt "None"
-  | Some v -> Expr.pp fmt v
+let pp = Fmt.(option ~none:(any "None") Expr.pp)
 
 let action_from_str = function
   | "load" -> Some Load

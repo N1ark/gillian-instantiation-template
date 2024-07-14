@@ -18,8 +18,6 @@ module Make (S : MyMonadicSMemory.S) :
       @@ fun ft (o, v) -> Fmt.pf ft "%a: %a" Expr.pp o S.pp v)
       b
 
-  let show s = Format.asprintf "%a" pp s
-
   type err_t =
     | OutOfBounds of Expr.t * Expr.t (* Accessed index, list length *)
     | MissingLength

@@ -83,11 +83,8 @@ struct
         (* shouldn't happen *)
         Format.fprintf fmt "@\nDomainSet: %a" Expr.pp d
 
-  let show s = Format.asprintf "%a" pp s
-
   type err_t =
     | NotAllocated of Expr.t
-    | AlreadyAllocated of Expr.t
     | InvalidIndexValue of Expr.t
     | MissingDomainSet
     | AllocDisallowedInDynamic
@@ -239,18 +236,13 @@ struct
 
   let produce pred (h, d) args =
     let open Delayed.Syntax in
+    let open MyUtils in
     match (pred, args) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
-    | SubPred pred, idx :: args -> (
-        let* r = validate_index (h, d) idx in
-        match r with
-        | Ok (h', idx, s) ->
-            let+ s' = S.produce pred s args in
-            update_entry (h', d) idx s'
-        | Error _ ->
-            Logging.normal (fun m ->
-                m "Warning PMap: vanishing due to invalid index");
-            Delayed.vanish ())
+    | SubPred pred, idx :: args ->
+        let*? h', idx, s = validate_index (h, d) idx in
+        let+ s' = S.produce pred s args in
+        update_entry (h', d) idx s'
     | DomainSet, [ d' ] -> (
         match d with
         | Some _ ->

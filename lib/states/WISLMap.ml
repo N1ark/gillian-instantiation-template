@@ -30,8 +30,6 @@ module Make (S : MyMonadicSMemory.S) :
       h;
     Format.pp_close_box fmt ()
 
-  let show s = Format.asprintf "%a" pp s
-
   type err_t =
     | NotAllocated of string
     | InvalidIndexValue of Expr.t
