@@ -80,12 +80,18 @@ module Make (S : MyMonadicSMemory.S) = struct
 
   let empty () : t = (SMap.empty, None)
 
-  let get_loc = function
+  let get_loc =
+    let open Delayed.Syntax in
+    function
     | Expr.Lit (Loc loc) -> DR.ok loc
     | Expr.ALoc loc -> DR.ok loc
-    | Expr.LVar v ->
-        let loc_name = ALoc.alloc () in
-        DR.ok ~learned:[ Formula.Eq (LVar v, ALoc loc_name) ] loc_name
+    | Expr.LVar _ as v -> (
+        let* loc = Delayed.resolve_loc v in
+        match loc with
+        | Some loc -> DR.ok loc
+        | None ->
+            let loc_name = ALoc.alloc () in
+            DR.ok ~learned:[ Formula.Eq (v, ALoc loc_name) ] loc_name)
     | le -> DR.error (InvalidIndexValue le)
 
   let domain_to_expr d =
