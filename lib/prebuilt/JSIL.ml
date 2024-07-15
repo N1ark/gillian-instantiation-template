@@ -124,40 +124,77 @@ module BaseObject = struct
 end
 
 (* - Ignore "Nono" values in the domainset *)
-module DomainsetPatchInject : Injection with type t = BaseObject.t = struct
+module DomainsetPatchInject = struct
   include DummyInject (BaseObject)
 
   let post_consume p ((h, d), outs) =
     match (p, outs) with
     | "domainset", [ Expr.ESet dom ] ->
-        let ensure_not_nono k =
+        let ensure_not_nono h k =
           match States.MyUtils.ExpMap.find_opt k h with
           | Some (Some (Expr.Lit Nono)) -> false
           | _ -> true
         in
-        let dom' = List.filter ensure_not_nono dom in
-        Delayed.return ((h, d), [ Expr.ESet dom' ])
+        let dom = List.filter (ensure_not_nono h) dom in
+        Delayed.return ((h, d), [ Expr.ESet dom ])
     | _ -> Delayed.return ((h, d), outs)
 end
 
-module Object =
-  Mapper
-    (JSSubstInner)
-    (MoveInToOut (Injector (DomainsetPatchInject) (BaseObject)))
+module SplitBaseObject = struct
+  include SplitPMap (StringIndex) (Exclusive)
+
+  let pp ft ((ch, sh, d) : t) =
+    let h = ExpMap.union (fun _ a _ -> Some a) ch sh in
+    let d =
+      match d with
+      | Some (Expr.ESet l) -> Some (Expr.ESet (List.sort Expr.compare l))
+      | e -> e
+    in
+    let open Fmt in
+    let pp_bindings =
+      iter_bindings ~sep:comma ExpMap.iter
+        (hbox (parens (pair ~sep:(any " :") Expr.pp Exclusive.pp)))
+    in
+    pf ft "[ @[%a@] | @[%a@] ]" pp_bindings h (option Expr.pp) d
+end
+
+(* - Ignore "Nono" values in the domainset *)
+module SplitDomainsetPatchInject = struct
+  include DummyInject (SplitBaseObject)
+
+  let post_consume p ((ch, sh, d), outs) =
+    match (p, outs) with
+    | "domainset", [ Expr.ESet dom ] ->
+        let ensure_not_nono h k =
+          match States.MyUtils.ExpMap.find_opt k h with
+          | Some (Some (Expr.Lit Nono)) -> false
+          | _ -> true
+        in
+        let dom = List.filter (ensure_not_nono ch) dom in
+        let dom = List.filter (ensure_not_nono sh) dom in
+        Delayed.return ((ch, sh, d), [ Expr.ESet dom ])
+    | _ -> Delayed.return ((ch, sh, d), outs)
+end
+
+module Object = Injector (DomainsetPatchInject) (BaseObject)
+module SplitObject = Injector (SplitDomainsetPatchInject) (SplitBaseObject)
 
 (* Note JS doesn't actually have a freed, but rather just erases the field.
    In practice the field doesn't get accessed anyways so it not existing or being
    Freed should behave the same. A post-action injection could be used to replace
    Freed with None for better fidelity. *)
-module BaseMemoryContent =
-  Freeable (UnsoundAlwaysOwned (PatchedProduct (IDs) (Object) (Agreement)))
+module BaseMemoryContent (S : MyMonadicSMemory) =
+  Freeable
+    (UnsoundAlwaysOwned
+       (PatchedProduct (IDs) (Mapper (JSSubstInner) (MoveInToOut (S)))
+          (Agreement)))
 
 (* When allocating, two params are given:
     - the address to allocate into (can be 'empty' to generate new address) - defaults to empty
     - the metadata address, which is the value of the agreement (rhs of the object product) - defaults to null
    Need to take that into consideration + similarly to WISL, return the index on each action. *)
-module ALoc_MemoryPatchedAlloc = struct
-  include ALocPMap (BaseMemoryContent)
+module ALoc_MemoryPatchedAlloc (S : MyMonadicSMemory) = struct
+  include ALocPMap (S)
   module SS = Gillian.Utils.Containers.SS
   module SMap = States.ALocPMap.SMap
 
@@ -175,7 +212,7 @@ module ALoc_MemoryPatchedAlloc = struct
             f "Allocating -> %s, args (%a)" idx
               (Fmt.list ~sep:Fmt.comma Expr.pp)
               args);
-        let s, v = BaseMemoryContent.instantiate [ v ] in
+        let s, v = S.instantiate [ v ] in
         let h' = SMap.add idx s h in
         let d' = modify_domain (SS.add idx) d in
         Delayed_result.ok ((h', d'), Expr.loc_from_loc_name idx :: v)
@@ -186,14 +223,12 @@ module ALoc_MemoryPatchedAlloc = struct
     let sorted_locs_with_vals =
       SMap.bindings h |> List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2)
     in
-    let pp_one ft (loc, fv_pairs) =
-      pf ft "@[%s |-> %a@]" loc BaseMemoryContent.pp fv_pairs
-    in
+    let pp_one ft (loc, fv_pairs) = pf ft "@[%s |-> %a@]" loc S.pp fv_pairs in
     (list ~sep:(any "@\n") pp_one) ft sorted_locs_with_vals
 end
 
-module Base_MemoryPatchedAlloc = struct
-  include PMap (LocationIndex) (BaseMemoryContent)
+module Base_MemoryPatchedAlloc (S : MyMonadicSMemory) = struct
+  include PMap (LocationIndex) (S)
   module SS = Gillian.Utils.Containers.SS
 
   (* Patch the alloc action *)
@@ -209,7 +244,7 @@ module Base_MemoryPatchedAlloc = struct
             f "Allocating -> %a, args (%a)" Expr.pp idx
               (Fmt.list ~sep:Fmt.comma Expr.pp)
               args);
-        let s, v = BaseMemoryContent.instantiate [ v ] in
+        let s, v = S.instantiate [ v ] in
         let h' = ExpMap.add idx s h in
         let d' = modify_domain (fun d -> idx :: d) d in
         Delayed_result.ok ((h', d'), idx :: v)
@@ -221,18 +256,21 @@ module Base_MemoryPatchedAlloc = struct
       ExpMap.bindings h |> List.sort (fun (k1, _) (k2, _) -> Expr.compare k1 k2)
     in
     let pp_one ft (loc, fv_pairs) =
-      pf ft "@[%a |-> %a@]" Expr.pp loc BaseMemoryContent.pp fv_pairs
+      pf ft "@[%a |-> %a@]" Expr.pp loc S.pp fv_pairs
     in
     (list ~sep:(any "@\n") pp_one) ft sorted_locs_with_vals
 end
+
+module Wrap
+    (Map : functor (_ : MyMonadicSMemory) -> MyMonadicSMemory)
+    (Obj : MyMonadicSMemory) =
+  Filter (JSFilter) (Mapper (JSSubst) (Map (BaseMemoryContent (Obj))))
 
 (* Actual exports *)
 
 module ParserAndCompiler = Js2jsil_lib.JS2GIL_ParserAndCompiler
 module ExternalSemantics = Semantics.External
-
-module Base_MonadicSMemory =
-  Filter (JSFilter) (Mapper (JSSubst) (Base_MemoryPatchedAlloc))
-
-module ALoc_MonadicSMemory =
-  Filter (JSFilter) (Mapper (JSSubst) (ALoc_MemoryPatchedAlloc))
+module MonadicSMemory_Base = Wrap (Base_MemoryPatchedAlloc) (BaseObject)
+module MonadicSMemory_ALoc = Wrap (ALoc_MemoryPatchedAlloc) (BaseObject)
+module MonadicSMemory_Split = Wrap (Base_MemoryPatchedAlloc) (SplitObject)
+module MonadicSMemory_ALocSplit = Wrap (ALoc_MemoryPatchedAlloc) (SplitObject)

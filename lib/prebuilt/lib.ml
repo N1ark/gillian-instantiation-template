@@ -1,11 +1,23 @@
 module JSIL_Base = struct
-  module MonadicSMemory = JSIL.Base_MonadicSMemory
+  module MonadicSMemory = JSIL.MonadicSMemory_Base
   module ParserAndCompiler = JSIL.ParserAndCompiler
   module ExternalSemantics = JSIL.ExternalSemantics
 end
 
 module JSIL_ALoc = struct
-  module MonadicSMemory = JSIL.ALoc_MonadicSMemory
+  module MonadicSMemory = JSIL.MonadicSMemory_ALoc
+  module ParserAndCompiler = JSIL.ParserAndCompiler
+  module ExternalSemantics = JSIL.ExternalSemantics
+end
+
+module JSIL_Split = struct
+  module MonadicSMemory = JSIL.MonadicSMemory_Split
+  module ParserAndCompiler = JSIL.ParserAndCompiler
+  module ExternalSemantics = JSIL.ExternalSemantics
+end
+
+module JSIL_ALocSplit = struct
+  module MonadicSMemory = JSIL.MonadicSMemory_ALocSplit
   module ParserAndCompiler = JSIL.ParserAndCompiler
   module ExternalSemantics = JSIL.ExternalSemantics
 end
