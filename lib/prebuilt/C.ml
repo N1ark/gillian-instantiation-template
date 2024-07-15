@@ -50,7 +50,8 @@ module EnhancedBaseMemory : MyMonadicSMemory with type t = BaseMemory.t = struct
                   (fun _ -> failwith "")
               in
               let s' =
-                update_entry (h, d) dest_loc' (States.Freeable.SubState dest)
+                update_entry (h, d) dst_loc dest_loc'
+                  (States.Freeable.SubState dest)
               in
               DR.ok (s', []))
     | _ -> failwith "Invalid arguments for mem_move"

@@ -157,8 +157,11 @@ struct
             if%sat Formula.SetMem (idx', d) then DR.ok (h, idx', S.empty ())
             else DR.error (NotAllocated idx'))
 
-  let update_entry (h, d) idx s =
-    if S.is_empty s then (ExpMap.remove idx h, d) else (ExpMap.add idx s h, d)
+  let update_entry (h, d) idx idx' s =
+    match (idx = idx', S.is_empty s) with
+    | _, true -> (ExpMap.remove idx h, d)
+    | true, false -> (ExpMap.add idx s h, d)
+    | false, false -> (ExpMap.remove idx h |> ExpMap.add idx' s, d)
 
   let execute_action action ((h, d) : t) args =
     let open Delayed.Syntax in
@@ -180,7 +183,7 @@ struct
         in
         let+ r = S.execute_action action s args in
         match r with
-        | Ok (s', v) -> Ok (update_entry m idx' s', v)
+        | Ok (s', v) -> Ok (update_entry m idx idx' s', idx' :: v)
         | Error e -> Error (SubError (idx, idx', e)))
     | Alloc, args ->
         if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
@@ -217,7 +220,7 @@ struct
         | Ok (h', idx', s), _ -> (
             let+ r = S.consume pred s ins in
             match r with
-            | Ok (s', v) -> Ok (update_entry (h', d) idx' s', v)
+            | Ok (s', v) -> Ok (update_entry (h', d) idx idx' s', v)
             | Error e -> Error (SubError (idx, idx', e)))
         | Error (NotAllocated idx'), Dynamic -> (
             let s, _ = S.instantiate I.default_instantiation in
@@ -225,7 +228,7 @@ struct
             let d' = modify_domain (fun d -> idx' :: d) d in
             let+ r = S.consume pred s ins in
             match r with
-            | Ok (s', v) -> Ok (update_entry (h', d') idx' s', v)
+            | Ok (s', v) -> Ok (update_entry (h', d') idx idx' s', v)
             | Error e -> Error (SubError (idx, idx', e)))
         | Error e, _ -> DR.error e)
     | DomainSet, [] -> (
@@ -242,7 +245,7 @@ struct
     | SubPred pred, idx :: args ->
         let*? h', idx, s = validate_index (h, d) idx in
         let+ s' = S.produce pred s args in
-        update_entry (h', d) idx s'
+        update_entry (h', d) idx idx s'
     | DomainSet, [ d' ] -> (
         match d with
         | Some _ ->

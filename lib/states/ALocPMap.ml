@@ -129,7 +129,8 @@ module Make (S : MyMonadicSMemory.S) = struct
         let** idx_s, s = validate_index (h, d) idx in
         let+ r = S.execute_action action s args in
         match r with
-        | Ok (s', v) -> Ok (update_entry (h, d) idx_s s', v)
+        | Ok (s', v) ->
+            Ok (update_entry (h, d) idx_s s', Expr.loc_from_loc_name idx_s :: v)
         | Error e -> Error (SubError (idx, idx_s, e)))
     | Alloc, args ->
         let idx = ALoc.alloc () in

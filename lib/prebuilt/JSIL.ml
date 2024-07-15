@@ -123,18 +123,9 @@ module BaseObject = struct
     pf ft "[ @[%a@] | @[%a@] ]" pp_bindings h (option Expr.pp) d
 end
 
-(* - Ignore "Nono" values in the domainset
-   - Similarly to WISL, actions on the PMap return the index used *)
+(* - Ignore "Nono" values in the domainset *)
 module DomainsetPatchInject : Injection with type t = BaseObject.t = struct
   include DummyInject (BaseObject)
-
-  let post_execute_action _ (s, args, rets) =
-    let rets' =
-      match (args, rets) with
-      | _, ([] as rets) | [], rets -> rets
-      | idx :: _, rets -> idx :: rets
-    in
-    Delayed.return (s, args, rets')
 
   let post_consume p ((h, d), outs) =
     match (p, outs) with
@@ -165,7 +156,7 @@ module BaseMemoryContent =
     - the address to allocate into (can be 'empty' to generate new address) - defaults to empty
     - the metadata address, which is the value of the agreement (rhs of the object product) - defaults to null
    Need to take that into consideration + similarly to WISL, return the index on each action. *)
-module MemoryPatchedAlloc = struct
+module ALoc_MemoryPatchedAlloc = struct
   include ALocPMap (BaseMemoryContent)
   module SS = Gillian.Utils.Containers.SS
   module SMap = States.ALocPMap.SMap
@@ -188,9 +179,6 @@ module MemoryPatchedAlloc = struct
         let h' = SMap.add idx s h in
         let d' = modify_domain (SS.add idx) d in
         Delayed_result.ok ((h', d'), Expr.loc_from_loc_name idx :: v)
-    | _, idx :: _ ->
-        let** s', rets = execute_action a (h, d) args in
-        Delayed_result.ok (s', idx :: rets)
     | _ -> execute_action a (h, d) args
 
   let pp ft ((h, _) : t) =
@@ -204,10 +192,47 @@ module MemoryPatchedAlloc = struct
     (list ~sep:(any "@\n") pp_one) ft sorted_locs_with_vals
 end
 
+module Base_MemoryPatchedAlloc = struct
+  include PMap (LocationIndex) (BaseMemoryContent)
+  module SS = Gillian.Utils.Containers.SS
+
+  (* Patch the alloc action *)
+  let execute_action a (h, d) args =
+    match (a, args) with
+    | Alloc, [ idx; v ] ->
+        let idx =
+          match idx with
+          | Expr.Lit Empty -> LocationIndex.make_fresh ()
+          | _ -> idx
+        in
+        Logging.tmi (fun f ->
+            f "Allocating -> %a, args (%a)" Expr.pp idx
+              (Fmt.list ~sep:Fmt.comma Expr.pp)
+              args);
+        let s, v = BaseMemoryContent.instantiate [ v ] in
+        let h' = ExpMap.add idx s h in
+        let d' = modify_domain (fun d -> idx :: d) d in
+        Delayed_result.ok ((h', d'), idx :: v)
+    | _ -> execute_action a (h, d) args
+
+  let pp ft ((h, _) : t) =
+    let open Fmt in
+    let sorted_locs_with_vals =
+      ExpMap.bindings h |> List.sort (fun (k1, _) (k2, _) -> Expr.compare k1 k2)
+    in
+    let pp_one ft (loc, fv_pairs) =
+      pf ft "@[%a |-> %a@]" Expr.pp loc BaseMemoryContent.pp fv_pairs
+    in
+    (list ~sep:(any "@\n") pp_one) ft sorted_locs_with_vals
+end
+
 (* Actual exports *)
 
 module ParserAndCompiler = Js2jsil_lib.JS2GIL_ParserAndCompiler
 module ExternalSemantics = Semantics.External
 
-module MonadicSMemory =
-  Filter (JSFilter) (Mapper (JSSubst) (MemoryPatchedAlloc))
+module Base_MonadicSMemory =
+  Filter (JSFilter) (Mapper (JSSubst) (Base_MemoryPatchedAlloc))
+
+module ALoc_MonadicSMemory =
+  Filter (JSFilter) (Mapper (JSSubst) (ALoc_MemoryPatchedAlloc))
