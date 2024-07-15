@@ -77,6 +77,10 @@ let is_empty = function
   | None -> true
   | Some _ -> false
 
+let is_concrete = function
+  | None -> false
+  | Some v -> Expr.is_concrete v
+
 let instantiate = function
   | [] -> (Some (Expr.Lit Undefined), [])
   | [ v ] -> (Some v, []) (* maybe we don't want two options *)

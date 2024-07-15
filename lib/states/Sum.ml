@@ -136,6 +136,11 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     | S2 s2 -> S2.is_empty s2
     | None -> true
 
+  let is_concrete = function
+    | S1 s1 -> S1.is_concrete s1
+    | S2 s2 -> S2.is_concrete s2
+    | None -> true
+
   let instantiate v =
     let s1, v = S1.instantiate v in
     (S1 s1, v)

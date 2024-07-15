@@ -211,6 +211,8 @@ module Make (S : MyMonadicSMemory.S) = struct
     | _, Some _ -> false
     | h, None -> SMap.for_all (fun _ s -> S.is_empty s) h
 
+  let is_concrete (h, _) = SMap.for_all (fun _ s -> S.is_concrete s) h
+
   let instantiate = function
     | [] -> ((SMap.empty, Some SS.empty), [])
     | _ -> failwith "Invalid arguments for instantiation"

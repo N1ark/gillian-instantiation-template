@@ -132,8 +132,14 @@ module Make (S : MyMonadicSMemory.S) :
           b Formula.True
     | _, None -> Formula.False
 
-  let is_empty _ =
-    false (* TODO: can a list ever be empty?? no length & all elems empty? *)
+  let is_empty = function
+    | b, None -> ExpMap.for_all (fun _ v -> S.is_empty v) b
+    | _ -> false
+
+  let is_concrete = function
+    | b, None -> ExpMap.for_all (fun _ v -> S.is_concrete v) b
+    | b, Some n ->
+        ExpMap.for_all (fun _ v -> S.is_concrete v) b && Expr.is_concrete n
 
   let instantiate : Expr.t list -> t * Expr.t list = function
     | n :: args ->

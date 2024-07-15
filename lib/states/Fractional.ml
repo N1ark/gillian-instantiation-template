@@ -98,6 +98,10 @@ let is_empty = function
   | None -> true
   | Some _ -> false
 
+let is_concrete = function
+  | None -> false
+  | Some (v, q) -> Expr.is_concrete v && Expr.is_concrete q
+
 let instantiate = function
   | [] -> (Some (Expr.int 0, Expr.num 1.), [])
   | _ -> failwith "Invalid Fractional instantiation"

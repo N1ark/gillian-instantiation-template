@@ -224,11 +224,10 @@ struct
             | Error e -> Error (SubError (idx, idx', e)))
         | Error (NotAllocated idx'), Dynamic -> (
             let s, _ = S.instantiate I.default_instantiation in
-            let h' = ExpMap.add idx' s h in
             let d' = modify_domain (fun d -> idx' :: d) d in
             let+ r = S.consume pred s ins in
             match r with
-            | Ok (s', v) -> Ok (update_entry (h', d') idx idx' s', v)
+            | Ok (s', v) -> Ok (update_entry (h, d') idx idx' s', v)
             | Error e -> Error (SubError (idx, idx', e)))
         | Error e, _ -> DR.error e)
     | DomainSet, [] -> (
@@ -278,6 +277,11 @@ struct
   let is_empty = function
     | _, Some _ -> false
     | h, None -> ExpMap.for_all (fun _ s -> S.is_empty s) h
+
+  let is_concrete = function
+    | h, Some d ->
+        Expr.is_concrete d && ExpMap.for_all (fun _ s -> S.is_concrete s) h
+    | h, None -> ExpMap.for_all (fun _ s -> S.is_concrete s) h
 
   let instantiate = function
     | [] -> ((ExpMap.empty, Some (Expr.ESet [])), [])

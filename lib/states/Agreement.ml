@@ -75,6 +75,10 @@ let is_empty = function
   | None -> true
   | Some _ -> false
 
+let is_concrete = function
+  | None -> false
+  | Some v -> Expr.is_concrete v
+
 let instantiate = function
   | [ v ] -> (Some v, [])
   | args ->

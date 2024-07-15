@@ -141,6 +141,7 @@ module Make (S : MyMonadicSMemory.S) :
     SMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s e)) h Formula.True
 
   let is_empty h = SMap.for_all (fun _ s -> S.is_empty s) h
+  let is_concrete h = SMap.for_all (fun _ s -> S.is_concrete s) h
 
   let instantiate = function
     | [] -> (SMap.empty, [])

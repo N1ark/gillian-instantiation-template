@@ -96,6 +96,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     Formula.Infix.((S1.is_fully_owned s1 e) #&& (S2.is_fully_owned s2 e))
 
   let is_empty (s1, s2) = S1.is_empty s1 && S2.is_empty s2
+  let is_concrete (s1, s2) = S1.is_concrete s1 && S2.is_concrete s2
 
   let instantiate v =
     let s1, v1 = S1.instantiate v in

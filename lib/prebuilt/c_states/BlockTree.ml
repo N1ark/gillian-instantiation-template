@@ -1172,6 +1172,11 @@ module M = struct
     Option.is_none bounds
     && Option.fold ~none:true ~some:(fun root -> Tree.is_empty root) root
 
+  let is_concrete _ =
+    Logging.tmi (fun f ->
+        f "Need to implement BlockTree.is_concrete ! Defaults to false !");
+    false
+
   let lvars { bounds; root } =
     SS.union
       (Option.fold ~none:SS.empty ~some:Range.lvars bounds)

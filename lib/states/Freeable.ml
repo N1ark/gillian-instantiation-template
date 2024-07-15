@@ -132,6 +132,11 @@ module Make (S : MyMonadicSMemory.S) :
     | Freed -> false
     | None -> true
 
+  let is_concrete = function
+    | SubState s -> S.is_concrete s
+    | Freed -> true (* not sure, doesn't matter *)
+    | None -> true
+
   let instantiate v =
     let s, v = S.instantiate v in
     (SubState s, v)
