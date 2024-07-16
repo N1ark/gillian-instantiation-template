@@ -149,6 +149,9 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
   let clear _ = empty ()
   let pp_err = pp_err_t
 
+  let substitution_in_place st s =
+    if Subst.is_empty st then Delayed.return s else substitution_in_place st s
+
   let pp_c_fix (fmt : Format.formatter) ((p, ins, outs) : c_fix_t) : unit =
     Format.fprintf fmt "<%s>(%a;%a)" (pred_to_str p)
       Fmt.(list ~sep:comma Expr.pp)

@@ -124,8 +124,27 @@ module BaseObject = struct
 end
 
 (* - Ignore "Nono" values in the domainset *)
-module DomainsetPatchInject = struct
+module DomainsetPatchInject : Injection with type t = BaseObject.t = struct
   include DummyInject (BaseObject)
+
+  let post_execute_action a ((h, d), args, rets) =
+    match (a, rets) with
+    | "get_domainset", [ (Expr.Lit (LList _) as dom) ]
+    | "get_domainset", [ (Expr.EList _ as dom) ] ->
+        let dom =
+          match dom with
+          | Expr.Lit (LList lits) -> List.map Expr.lit lits
+          | Expr.EList lits -> lits
+          | _ -> failwith "Unexpected domainset type"
+        in
+        let ensure_not_nono h k =
+          match States.MyUtils.ExpMap.find_opt k h with
+          | Some (Some (Expr.Lit Nono)) -> false
+          | _ -> true
+        in
+        let dom = List.filter (ensure_not_nono h) dom in
+        Delayed.return ((h, d), args, [ Expr.list dom ])
+    | _ -> Delayed.return ((h, d), args, rets)
 
   let post_consume p ((h, d), outs) =
     match (p, outs) with
@@ -161,6 +180,26 @@ end
 (* - Ignore "Nono" values in the domainset *)
 module SplitDomainsetPatchInject = struct
   include DummyInject (SplitBaseObject)
+
+  let post_execute_action a ((ch, sh, d), args, rets) =
+    match (a, rets) with
+    | "get_domainset", [ (Expr.Lit (LList _) as dom) ]
+    | "get_domainset", [ (Expr.EList _ as dom) ] ->
+        let dom =
+          match dom with
+          | Expr.Lit (LList lits) -> List.map Expr.lit lits
+          | Expr.EList lits -> lits
+          | _ -> failwith "Unexpected domainset type"
+        in
+        let ensure_not_nono h k =
+          match States.MyUtils.ExpMap.find_opt k h with
+          | Some (Some (Expr.Lit Nono)) -> false
+          | _ -> true
+        in
+        let dom = List.filter (ensure_not_nono ch) dom in
+        let dom = List.filter (ensure_not_nono sh) dom in
+        Delayed.return ((ch, sh, d), args, [ Expr.list dom ])
+    | _ -> Delayed.return ((ch, sh, d), args, rets)
 
   let post_consume p ((ch, sh, d), outs) =
     match (p, outs) with
@@ -270,7 +309,7 @@ module Wrap
 
 module ParserAndCompiler = Js2jsil_lib.JS2GIL_ParserAndCompiler
 module ExternalSemantics = Semantics.External
-module MonadicSMemory_Base = Wrap (Base_MemoryPatchedAlloc) (BaseObject)
-module MonadicSMemory_ALoc = Wrap (ALoc_MemoryPatchedAlloc) (BaseObject)
+module MonadicSMemory_Base = Wrap (Base_MemoryPatchedAlloc) (Object)
+module MonadicSMemory_ALoc = Wrap (ALoc_MemoryPatchedAlloc) (Object)
 module MonadicSMemory_Split = Wrap (Base_MemoryPatchedAlloc) (SplitObject)
 module MonadicSMemory_ALocSplit = Wrap (ALoc_MemoryPatchedAlloc) (SplitObject)
