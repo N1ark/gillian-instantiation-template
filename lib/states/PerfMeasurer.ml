@@ -14,6 +14,7 @@ module Make (S : SMemory.S) = struct
 
   let m1 name f x = measure_ name (fun () -> f x)
   let m2 name f x y = measure_ name (fun () -> f x y)
+  let m3 name f x y z = measure_ name (fun () -> f x y z)
   let m4 name f x y z w = measure_ name (fun () -> f x y z w)
 
   include S
@@ -21,9 +22,12 @@ module Make (S : SMemory.S) = struct
   let init = m1 "init" init
   let get_init_data = m1 "get_init_data" get_init_data
   let clear = m1 "clear" clear
-  let execute_action = m4 "execute_action" execute_action
-  let consume = m4 "consume" consume
-  let produce = m4 "produce" produce
+
+  let execute_action a =
+    m3 (Format.asprintf "execute_action/%s" a) (execute_action a)
+
+  let consume p = m3 (Format.asprintf "consume/%s" p) (consume p)
+  let produce p = m3 (Format.asprintf "produce/%s" p) (produce p)
   let is_overlapping_asrt = m1 "is_overlapping_asrt" is_overlapping_asrt
   let copy = m1 "copy" copy
 
@@ -57,7 +61,5 @@ module Make (S : SMemory.S) = struct
     in
     (list ~sep:(any "@\n") pp_one) ft vals
 
-  let execute_action a s =
-    Fmt.pr "@[%a@]@." pp s;
-    execute_action a s
+  let () = at_exit (fun () -> Fmt.pr "PERF: @.@[%a@]@.@." pp ())
 end
