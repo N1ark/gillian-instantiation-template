@@ -100,7 +100,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   let produce pred s args =
     let open Delayed.Syntax in
-    let open MyUtils in
+    let open MyUtils.Syntax in
     match pred with
     | P1 pred ->
         let*? s1 = get_s1 s in

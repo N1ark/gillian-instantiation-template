@@ -29,13 +29,12 @@ let pp_bindings ~pp_k ~pp_v iter fmt m =
 module type SymExprMap = sig
   include Prelude.Map.S with type key = Expr.t
 
-  val sym_find_opt : key -> 'a t -> ('a t * key * 'a) option Delayed.t
+  val sym_find_opt : key -> 'a t -> (key * 'a) option Delayed.t
 
   val sym_find_default :
-    key -> 'a t -> default:(unit -> 'a) -> ('a t * key * 'a) Delayed.t
+    key -> 'a t -> default:(unit -> 'a) -> (key * 'a) Delayed.t
 
-  val sym_find_res :
-    key -> 'a t -> err:'b -> ('a t * key * 'a, 'b) result Delayed.t
+  val sym_find_res : key -> 'a t -> err:'b -> (key * 'a, 'b) result Delayed.t
 
   val sym_compose :
     ('a -> 'a -> 'a Delayed.t) -> (Expr.t * 'a) list -> 'a t -> 'a t Delayed.t
@@ -51,19 +50,14 @@ module ExpMap : SymExprMap = struct
   include Temp
 
   let sym_find_opt k m =
-    (* TODO: commented code doesn't seem to give any improvement. (slows down????) *)
-    (* let open Delayed.Syntax in *)
     match Temp.find_opt k m with
-    | Some v -> Delayed.return (Some (m, k, v)) (* Direct match *)
+    | Some v -> Delayed.return (Some (k, v)) (* Direct match *)
     | None ->
         let rec find_match m aux =
           match aux with
           | [] -> Delayed.return None
           | (k', v) :: tl ->
-              (* let* k' = Delayed.reduce k' in *)
-              if%sat Formula.Infix.(k' #== k) then
-                (* let m' = Temp.add k' v (Temp.remove k m) in *)
-                Delayed.return (Some (m, k', v))
+              if%sat Formula.Infix.(k' #== k) then Delayed.return (Some (k', v))
               else find_match m tl
         in
         find_match m (bindings m)
@@ -72,14 +66,14 @@ module ExpMap : SymExprMap = struct
     let open Delayed.Syntax in
     let* res = sym_find_opt k m in
     match res with
-    | Some (m, k, v) -> Delayed.return (m, k, v)
-    | None -> Delayed.return (m, k, default ())
+    | Some (k, v) -> Delayed.return (k, v)
+    | None -> Delayed.return (k, default ())
 
   let sym_find_res k m ~err =
     let open Delayed.Syntax in
     let+ res = sym_find_opt k m in
     match res with
-    | Some (m, k, v) -> Ok (m, k, v)
+    | Some (k, v) -> Ok (k, v)
     | None -> Error err
 
   (** Symbolically composes a map with a list of entries, composing entries when they
@@ -93,9 +87,9 @@ module ExpMap : SymExprMap = struct
       let* m = m in
       let* r = sym_find_opt k m in
       match r with
-      | Some (m', k', v') ->
+      | Some (k', v') ->
           let+ v'' = compose v v' in
-          add k' v'' m'
+          add k' v'' m
       | None -> Delayed.return (add k v m)
     in
     List.fold_left compose_binding (Delayed.return m) l
@@ -115,7 +109,7 @@ module ExpMapEnt : SymExprMap = struct
     (* TODO: commented code doesn't seem to give any improvement. (slows down????) *)
     (* let open Delayed.Syntax in *)
     match find_opt k m with
-    | Some v -> Delayed.return (Some (m, k, v)) (* Direct match *)
+    | Some v -> Delayed.return (Some (k, v)) (* Direct match *)
     | None ->
         let rec find_match = function
           | _, [] -> Delayed.return None
@@ -123,10 +117,24 @@ module ExpMapEnt : SymExprMap = struct
               (* let* k' = Delayed.reduce k' in *)
               if%ent Formula.Infix.(k' #== k) then
                 (* let m' = Temp.add k' v (Temp.remove k m) in *)
-                Delayed.return (Some (m, k', v))
+                Delayed.return (Some (k', v))
               else find_match (m, tl)
         in
         find_match (m, bindings m)
+
+  let sym_find_default k m ~default =
+    let open Delayed.Syntax in
+    let* res = sym_find_opt k m in
+    match res with
+    | Some (k, v) -> Delayed.return (k, v)
+    | None -> Delayed.return (k, default ())
+
+  let sym_find_res k m ~err =
+    let open Delayed.Syntax in
+    let+ res = sym_find_opt k m in
+    match res with
+    | Some (k, v) -> Ok (k, v)
+    | None -> Error err
 end
 
 let pp_opt pp_v fmt = function
@@ -134,6 +142,23 @@ let pp_opt pp_v fmt = function
   | None -> Format.pp_print_string fmt "None"
 
 let deep_map f l = List.map (fun l' -> List.map f l') l
+
+(** Faster than Delayed.resolve_loc, attempts to resolve a location. This may result in
+extending the path condition. Returns None if the input can definitely not be a location. *)
+let get_loc =
+  let open Delayed.Syntax in
+  let open Delayed_option in
+  function
+  | Expr.Lit (Loc loc) -> some loc
+  | Expr.ALoc loc -> some loc
+  | Expr.LVar _ as v -> (
+      let* loc = Delayed.resolve_loc v in
+      match loc with
+      | Some loc -> some loc
+      | None ->
+          let loc_name = ALoc.alloc () in
+          some ~learned:[ Formula.Eq (v, ALoc loc_name) ] loc_name)
+  | _ -> none ()
 
 let bind_vanish_on_err (x : ('a, 'e) result Delayed.t) (f : 'a -> 'b Delayed.t)
     : 'b Delayed.t =
@@ -143,4 +168,6 @@ let bind_vanish_on_err (x : ('a, 'e) result Delayed.t) (f : 'a -> 'b Delayed.t)
   | Ok x -> f x
   | Error _ -> Delayed.vanish ()
 
-let ( let*? ) = bind_vanish_on_err
+module Syntax = struct
+  let ( let*? ) = bind_vanish_on_err
+end

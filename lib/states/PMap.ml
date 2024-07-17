@@ -66,7 +66,8 @@ module Make_
     (S : MyMonadicSMemory.S)
     (ExpMap : MyUtils.SymExprMap) =
 struct
-  type t = S.t ExpMap.t * Expr.t option [@@deriving yojson]
+  type entry = S.t [@@deriving yojson]
+  type t = entry ExpMap.t * Expr.t option [@@deriving yojson]
 
   let pp fmt ((h, d) : t) =
     Format.pp_open_vbox fmt 0;
@@ -132,10 +133,10 @@ struct
 
   let empty () : t = (ExpMap.empty, None)
 
-  let modify_domain f d =
+  let domain_add k (h, d) =
     match d with
-    | None -> d
-    | Some (Expr.ESet d) -> Some (Expr.ESet (f d))
+    | None -> (h, d)
+    | Some (Expr.ESet d) -> (h, Some (Expr.ESet (k :: d)))
     | Some _ -> failwith "Invalid index set"
 
   let validate_index ((h, d) : t) idx =
@@ -146,15 +147,15 @@ struct
     | Some idx' -> (
         let* match_val = ExpMap.sym_find_opt idx' h in
         match (match_val, d) with
-        | Some (h', idx'', v), _ -> DR.ok (h', idx'', v)
+        | Some (idx'', v), _ -> DR.ok (idx'', v)
         (* If the cell is not found, it is initialised to empty. Trust the below state
            models to raise a Miss error, that will then be wrapped and taken care of.
            Otherwise we would need to raise a miss error that doesn't make sense since it can't
            really be fixed; there is no 'cell' predicate in the PMap, it relies on the sub
            states' predicates being extended with an index in-argument. *)
-        | None, None -> DR.ok (h, idx', S.empty ())
+        | None, None -> DR.ok (idx', S.empty ())
         | None, Some d ->
-            if%sat Formula.SetMem (idx', d) then DR.ok (h, idx', S.empty ())
+            if%sat Formula.SetMem (idx', d) then DR.ok (idx', S.empty ())
             else DR.error (NotAllocated idx'))
 
   let update_entry (h, d) idx idx' s =
@@ -163,95 +164,92 @@ struct
     | true, false -> (ExpMap.add idx s h, d)
     | false, false -> (ExpMap.remove idx h |> ExpMap.add idx' s, d)
 
-  let execute_action action ((h, d) : t) args =
+  let execute_action action (s : t) args =
     let open Delayed.Syntax in
     let open DR.Syntax in
     match (action, args) with
     | SubAction _, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args -> (
-        let* r = validate_index (h, d) idx in
-        let** m, idx', s =
+        let* r = validate_index s idx in
+        let** s, idx', ss =
           match r with
-          | Ok (h', idx, s) -> DR.ok ((h', d), idx, s)
+          | Ok (idx, ss) -> DR.ok (s, idx, ss)
           (* In Dynamic mode, missing cells are instantiated to a default value *)
           | Error (NotAllocated idx) when I.mode = Dynamic ->
-              let s, _ = S.instantiate I.default_instantiation in
-              let h' = ExpMap.add idx s h in
-              let d' = modify_domain (fun d -> idx :: d) d in
-              DR.ok ((h', d'), idx, s)
+              let ss, _ = S.instantiate I.default_instantiation in
+              DR.ok (domain_add idx s, idx, ss)
           | Error e -> DR.error e
         in
-        let+ r = S.execute_action action s args in
+        let+ r = S.execute_action action ss args in
         match r with
-        | Ok (s', v) -> Ok (update_entry m idx idx' s', idx' :: v)
+        | Ok (ss', v) -> Ok (update_entry s idx idx' ss', idx' :: v)
         | Error e -> Error (SubError (idx, idx', e)))
-    | Alloc, args ->
-        if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
-        else
-          let idx = I.make_fresh () in
-          let s, v = S.instantiate args in
-          let h' = ExpMap.add idx s h in
-          let d' = modify_domain (fun d -> idx :: d) d in
-          DR.ok ((h', d'), idx :: v)
+    | Alloc, args -> (
+        match I.mode with
+        | Dynamic -> DR.error AllocDisallowedInDynamic
+        | Static ->
+            let idx = I.make_fresh () in
+            let ss, v = S.instantiate args in
+            let s' = update_entry s idx idx ss |> domain_add idx in
+            DR.ok (s', idx :: v))
     | GetDomainSet, [] -> (
-        match d with
+        match s with
         (* Implementation taken from JSIL:
            - ensure domain set is there
            - ensure the domain set is exactly the set of keys in the map
            - filter keys to remove empty cells (for JS: Nono)
            - return as a list *)
-        | Some d ->
+        | h, Some d ->
             let keys = List.map fst (ExpMap.bindings h) in
             if%ent Formula.Infix.(d #== (Expr.ESet keys)) then
               let _, pos = ExpMap.partition (fun _ s -> S.is_empty s) h in
               let keys = List.map fst (ExpMap.bindings pos) in
-              DR.ok ((h, Some d), [ Expr.list keys ])
+              DR.ok (s, [ Expr.list keys ])
             else DR.error DomainSetNotFullyOwned
-        | None -> DR.error MissingDomainSet)
+        | _, None -> DR.error MissingDomainSet)
     | GetDomainSet, _ -> failwith "Invalid arguments for get_domainset"
 
-  let consume pred (h, d) ins =
+  let consume pred s ins =
     let open Delayed.Syntax in
     match (pred, ins) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins -> (
-        let* res = validate_index (h, d) idx in
+        let* res = validate_index s idx in
         match (res, I.mode) with
-        | Ok (h', idx', s), _ -> (
-            let+ r = S.consume pred s ins in
+        | Ok (idx', ss), _ -> (
+            let+ r = S.consume pred ss ins in
             match r with
-            | Ok (s', v) -> Ok (update_entry (h', d) idx idx' s', v)
+            | Ok (ss', v) -> Ok (update_entry s idx idx' ss', v)
             | Error e -> Error (SubError (idx, idx', e)))
         | Error (NotAllocated idx'), Dynamic -> (
-            let s, _ = S.instantiate I.default_instantiation in
-            let d' = modify_domain (fun d -> idx' :: d) d in
-            let+ r = S.consume pred s ins in
+            let ss, _ = S.instantiate I.default_instantiation in
+            let+ r = S.consume pred ss ins in
             match r with
-            | Ok (s', v) -> Ok (update_entry (h, d') idx idx' s', v)
+            | Ok (ss', v) ->
+                let s' = update_entry s idx idx' ss' |> domain_add idx' in
+                Ok (s', v)
             | Error e -> Error (SubError (idx, idx', e)))
         | Error e, _ -> DR.error e)
     | DomainSet, [] -> (
-        match d with
-        | Some d -> DR.ok ((h, None), [ d ])
-        | None -> DR.error MissingDomainSet)
+        match s with
+        | h, Some d -> DR.ok ((h, None), [ d ])
+        | _, None -> DR.error MissingDomainSet)
     | DomainSet, _ -> failwith "Invalid number of ins for domainset"
 
-  let produce pred (h, d) args =
+  let produce pred s args =
     let open Delayed.Syntax in
-    let open MyUtils in
+    let open MyUtils.Syntax in
     match (pred, args) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: args ->
-        let*? h', idx, s = validate_index (h, d) idx in
-        let+ s' = S.produce pred s args in
-        update_entry (h', d) idx idx s'
+        let*? idx, ss = validate_index s idx in
+        let+ ss' = S.produce pred ss args in
+        update_entry s idx idx ss'
     | DomainSet, [ d' ] -> (
-        match d with
-        | Some _ ->
-            Logging.normal (fun m ->
-                m "Warning PMap: vanishing due to duplicate domain set");
-            Delayed.vanish ()
-        | None -> Delayed.return (h, Some d') (* TODO: if%sat typeof set ?? *))
+        match s with
+        | _, Some _ -> Delayed.vanish ()
+        | h, None ->
+            Delayed.return (h, Some d') (* TODO: if%sat typeof set ?? *))
     | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
 
   let compose (h1, d1) (h2, d2) =
@@ -338,7 +336,10 @@ struct
   let can_fix = function
     | SubError (_, _, e) -> S.can_fix e
     | MissingDomainSet -> true
-    | _ -> false (* TODO *)
+    | AllocDisallowedInDynamic -> false
+    | DomainSetNotFullyOwned -> false
+    | InvalidIndexValue _ -> false
+    | NotAllocated _ -> false
 
   let get_fixes = function
     | SubError (idx, idx', e) ->
@@ -355,6 +356,16 @@ struct
           ];
         ]
     | _ -> failwith "Called get_fixes on unfixable error"
+end
+
+module type PMapType = sig
+  include MyMonadicSMemory.S
+
+  type entry
+
+  val validate_index : t -> Expr.t -> (Expr.t * entry, err_t) DR.t
+  val update_entry : t -> Expr.t -> Expr.t -> entry -> t
+  val domain_add : Expr.t -> t -> t
 end
 
 module Make (I : PMapIndex) (S : MyMonadicSMemory.S) =

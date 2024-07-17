@@ -3,7 +3,7 @@ open Gillian.Monadic
 open Gillian.Symbolic
 open Gil_syntax
 module DR = Delayed_result
-open MyUtils
+module ExpMap = MyUtils.ExpMap
 
 module Make (S : MyMonadicSMemory.S) :
   MyMonadicSMemory.S with type t = S.t ExpMap.t * Expr.t option = struct
@@ -71,10 +71,10 @@ module Make (S : MyMonadicSMemory.S) :
     match (action, args) with
     | SubAction a, idx :: args -> (
         let** () = validate_index (b, n) idx in
-        let* b', idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
+        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
         let+ r = S.execute_action a s args in
         match r with
-        | Ok (s', v) -> Ok ((ExpMap.add idx s' b', n), v)
+        | Ok (s', v) -> Ok ((ExpMap.add idx s' b, n), v)
         | Error e -> Error (SubError (idx, e)))
     | SubAction _, [] -> failwith "Missing index for sub-action"
 
@@ -84,11 +84,11 @@ module Make (S : MyMonadicSMemory.S) :
     match (pred, ins) with
     | SubPred p, idx :: ins -> (
         let** () = validate_index (b, n) idx in
-        let* b', idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
+        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
         let+ r = S.consume p s ins in
         match r with
-        | Ok (s, outs) when S.is_empty s -> Ok ((ExpMap.remove idx b', n), outs)
-        | Ok (s, outs) -> Ok ((ExpMap.add idx s b', n), outs)
+        | Ok (s, outs) when S.is_empty s -> Ok ((ExpMap.remove idx b, n), outs)
+        | Ok (s, outs) -> Ok ((ExpMap.add idx s b, n), outs)
         | Error e -> Error (SubError (idx, e)))
     | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
     | Length, [] -> (
@@ -99,12 +99,13 @@ module Make (S : MyMonadicSMemory.S) :
 
   let produce pred (b, n) args =
     let open Delayed.Syntax in
+    let open MyUtils.Syntax in
     match (pred, args) with
     | SubPred p, idx :: args ->
         let*? _ = validate_index (b, n) idx in
-        let* b', idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
+        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
         let* s' = S.produce p s args in
-        Delayed.return (ExpMap.add idx s' b', n)
+        Delayed.return (ExpMap.add idx s' b, n)
     | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
     | Length, [ n' ] -> (
         match n with

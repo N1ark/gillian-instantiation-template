@@ -12,7 +12,9 @@ module Make_
     (ExpMap : MyUtils.SymExprMap) =
 struct
   (** Concrete pairs, symbolic(/mixed?) pairs, domain set *)
-  type t = S.t ExpMap.t * S.t ExpMap.t * Expr.t option [@@deriving yojson]
+  type entry = S.t [@@deriving yojson]
+
+  type t = entry ExpMap.t * S.t ExpMap.t * Expr.t option [@@deriving yojson]
 
   let pp fmt ((ch, sh, d) : t) =
     let h =
@@ -89,10 +91,10 @@ struct
 
   let empty () : t = (ExpMap.empty, ExpMap.empty, None)
 
-  let modify_domain f d =
+  let domain_add idx (ch, sh, d) =
     match d with
-    | None -> d
-    | Some (Expr.ESet d) -> Some (Expr.ESet (f d))
+    | None -> (ch, sh, d)
+    | Some (Expr.ESet d) -> (ch, sh, Some (Expr.ESet (idx :: d)))
     | Some _ -> failwith "Invalid index set"
 
   let validate_index ((ch, sh, d) : t) idx =
@@ -111,14 +113,13 @@ struct
                 let merged = ExpMap.union (fun _ v1 _ -> Some v1) ch sh in
                 let* match_val = ExpMap.sym_find_opt idx' merged in
                 match (match_val, d) with
-                | Some (_, idx'', v), _ -> DR.ok (idx'', v)
+                | Some (idx'', v), _ -> DR.ok (idx'', v)
                 | None, None -> DR.ok (idx', S.empty ())
                 | None, Some d ->
                     if%sat Formula.SetMem (idx', d) then DR.ok (idx', S.empty ())
                     else DR.error (NotAllocated idx'))))
 
   let update_entry (ch, sh, d) idx idx' s =
-    (* father, forgive me for i have sinned *)
     let is_emp = S.is_empty s in
     (* remove from both (dont know where it was) *)
     let ch', sh' = (ExpMap.remove idx ch, ExpMap.remove idx sh) in
@@ -128,7 +129,7 @@ struct
       if is_c then (ExpMap.add idx' s ch', sh', d)
       else (ch', ExpMap.add idx' s sh', d)
 
-  let execute_action action ((ch, sh, d) as s : t) args =
+  let execute_action action (s : t) args =
     let open Delayed.Syntax in
     let open DR.Syntax in
     match (action, args) with
@@ -141,35 +142,30 @@ struct
           (* In Dynamic mode, missing cells are instantiated to a default value *)
           | Error (NotAllocated idx) when I.mode = Dynamic ->
               let ss, _ = S.instantiate I.default_instantiation in
-              let ch', sh', d = update_entry s idx idx ss in
-              let d' = modify_domain (fun d -> idx :: d) d in
-              DR.ok ((ch', sh', d'), idx, ss)
+              let s' = domain_add idx s in
+              DR.ok (s', idx, ss)
           | Error e -> DR.error e
         in
         let+ r = S.execute_action action ss args in
         match r with
         | Ok (ss', v) -> Ok (update_entry s' idx idx' ss', idx' :: v)
         | Error e -> Error (SubError (idx, idx', e)))
-    | Alloc, args ->
-        if I.mode = Dynamic then DR.error AllocDisallowedInDynamic
-        else
-          let idx = I.make_fresh () in
-          let ss, v = S.instantiate args in
-          let ch', sh' =
-            if Expr.is_concrete idx && S.is_concrete ss then
-              (ExpMap.add idx ss ch, sh)
-            else (ch, ExpMap.add idx ss sh)
-          in
-          let d' = modify_domain (fun d -> idx :: d) d in
-          DR.ok ((ch', sh', d'), idx :: v)
+    | Alloc, args -> (
+        match I.mode with
+        | Dynamic -> DR.error AllocDisallowedInDynamic
+        | Static ->
+            let idx = I.make_fresh () in
+            let ss, v = S.instantiate args in
+            let s' = update_entry s idx idx ss |> domain_add idx in
+            DR.ok (s', idx :: v))
     | GetDomainSet, [] -> (
-        match d with
+        match s with
         (* Implementation taken from JSIL:
            - ensure domain set is there
            - ensure the domain set is exactly the set of keys in the map
            - filter keys to remove empty cells (for JS: Nono)
            - return as a list *)
-        | Some d ->
+        | ch, sh, Some d ->
             (* CAREFUL HERE !! Overriding the symbolic side *)
             let h_merged = ExpMap.union (fun _ v1 _ -> Some v1) ch sh in
             let keys = List.map fst (ExpMap.bindings h_merged) in
@@ -178,12 +174,12 @@ struct
                 ExpMap.partition (fun _ s -> S.is_empty s) h_merged
               in
               let keys = List.map fst (ExpMap.bindings pos) in
-              DR.ok ((ch, sh, Some d), [ Expr.list keys ])
+              DR.ok (s, [ Expr.list keys ])
             else DR.error DomainSetNotFullyOwned
-        | None -> DR.error MissingDomainSet)
+        | _, _, None -> DR.error MissingDomainSet)
     | GetDomainSet, _ -> failwith "Invalid arguments for get_domainset"
 
-  let consume pred ((ch, sh, d) as s) ins =
+  let consume pred s ins =
     let open Delayed.Syntax in
     match (pred, ins) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
@@ -200,19 +196,19 @@ struct
             let+ r = S.consume pred ss ins in
             match r with
             | Ok (ss', v) ->
-                let d' = modify_domain (fun d -> idx' :: d) d in
-                Ok (update_entry (ch, sh, d') idx idx' ss', v)
+                let s' = update_entry s idx idx' ss' |> domain_add idx' in
+                Ok (s', v)
             | Error e -> Error (SubError (idx, idx', e)))
         | Error e, _ -> DR.error e)
     | DomainSet, [] -> (
-        match d with
-        | Some d -> DR.ok ((ch, sh, None), [ d ])
-        | None -> DR.error MissingDomainSet)
+        match s with
+        | ch, sh, Some d -> DR.ok ((ch, sh, None), [ d ])
+        | _, _, None -> DR.error MissingDomainSet)
     | DomainSet, _ -> failwith "Invalid number of ins for domainset"
 
-  let produce pred ((ch, sh, d) as s) args =
+  let produce pred s args =
     let open Delayed.Syntax in
-    let open MyUtils in
+    let open MyUtils.Syntax in
     match (pred, args) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: args ->
@@ -220,9 +216,9 @@ struct
         let+ ss' = S.produce pred ss args in
         update_entry s idx idx' ss'
     | DomainSet, [ d' ] -> (
-        match d with
-        | Some _ -> Delayed.vanish ()
-        | None ->
+        match s with
+        | _, _, Some _ -> Delayed.vanish ()
+        | ch, sh, None ->
             Delayed.return (ch, sh, Some d') (* TODO: if%sat typeof set ?? *))
     | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
 
@@ -314,7 +310,10 @@ struct
   let can_fix = function
     | SubError (_, _, e) -> S.can_fix e
     | MissingDomainSet -> true
-    | _ -> false (* TODO *)
+    | AllocDisallowedInDynamic -> false
+    | DomainSetNotFullyOwned -> false
+    | InvalidIndexValue _ -> false
+    | NotAllocated _ -> false
 
   let get_fixes = function
     | SubError (idx, idx', e) ->
@@ -333,8 +332,15 @@ struct
     | _ -> failwith "Called get_fixes on unfixable error"
 end
 
-module Make (I : PMapIndex) (S : MyMonadicSMemory.S) =
+module Make (I : PMapIndex) (S : MyMonadicSMemory.S) :
+  PMap.PMapType
+    with type entry = S.t
+     and type t = S.t MyUtils.ExpMap.t * S.t MyUtils.ExpMap.t * Expr.t option =
   Make_ (I) (S) (MyUtils.ExpMap)
 
-module MakeEnt (I : PMapIndex) (S : MyMonadicSMemory.S) =
+module MakeEnt (I : PMapIndex) (S : MyMonadicSMemory.S) :
+  PMap.PMapType
+    with type entry = S.t
+     and type t =
+      S.t MyUtils.ExpMapEnt.t * S.t MyUtils.ExpMapEnt.t * Expr.t option =
   Make_ (I) (S) (MyUtils.ExpMapEnt)
