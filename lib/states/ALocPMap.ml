@@ -1,6 +1,7 @@
 open Gillian.Utils
 open Gillian.Monadic
 open Gil_syntax
+module Subst = Gillian.Symbolic.Subst
 module DR = Delayed_result
 
 module type PMapIndex = PMap.PMapIndex
@@ -219,13 +220,28 @@ module Make (S : MyMonadicSMemory.S) = struct
 
   let substitution_in_place sub (h, d) =
     let open Delayed.Syntax in
+    let open MyUtils in
     let mapper (idx, s) =
+      let idx = Expr.loc_from_loc_name idx in
+      let idx' = Subst.subst_in_expr sub idx ~partial:true in
+      let*? idx' = get_loc idx' in
       let+ s' = S.substitution_in_place sub s in
-      (idx, s')
+      (idx', s')
     in
     let map_entries = SMap.bindings h in
-    let+ sub_entries = Delayed.all (List.map mapper map_entries) in
-    let h' = SMap.of_list sub_entries in
+    let* sub_entries = Delayed.all (List.map mapper map_entries) in
+    let+ h' =
+      List.fold_left
+        (fun acc (idx, s) ->
+          let* acc = acc in
+          match SMap.find_opt idx acc with
+          | None -> Delayed.return (SMap.add idx s acc)
+          | Some s' ->
+              let+ s'' = S.compose s s' in
+              SMap.add idx s'' acc)
+        (Delayed.return SMap.empty)
+        sub_entries
+    in
     (h', d)
 
   let lvars (h, _) =
