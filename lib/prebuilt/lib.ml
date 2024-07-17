@@ -1,3 +1,9 @@
+module WISL = struct
+  module MonadicSMemory = WISL.MonadicSMemory
+  module ParserAndCompiler = WISL.ParserAndCompiler
+  module ExternalSemantics = WISL.ExternalSemantics
+end
+
 module JSIL_Base = struct
   module MonadicSMemory = JSIL.MonadicSMemory_Base
   module ParserAndCompiler = JSIL.ParserAndCompiler
@@ -22,14 +28,20 @@ module JSIL_ALocSplit = struct
   module ExternalSemantics = JSIL.ExternalSemantics
 end
 
-module WISL = struct
-  module MonadicSMemory = WISL.MonadicSMemory
-  module ParserAndCompiler = WISL.ParserAndCompiler
-  module ExternalSemantics = WISL.ExternalSemantics
+module C_Base = struct
+  module MonadicSMemory = C.MonadicSMemory_Base
+  module ParserAndCompiler = C.ParserAndCompiler
+  module ExternalSemantics = C.ExternalSemantics
 end
 
-module C = struct
-  module MonadicSMemory = C.MonadicSMemory
+module C_ALoc = struct
+  module MonadicSMemory = C.MonadicSMemory_ALoc
+  module ParserAndCompiler = C.ParserAndCompiler
+  module ExternalSemantics = C.ExternalSemantics
+end
+
+module C_Split = struct
+  module MonadicSMemory = C.MonadicSMemory_Split
   module ParserAndCompiler = C.ParserAndCompiler
   module ExternalSemantics = C.ExternalSemantics
 end
