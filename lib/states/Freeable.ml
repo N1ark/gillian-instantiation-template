@@ -53,6 +53,7 @@ module Make (S : MyMonadicSMemory.S) :
     (FreedPred, [], [])
     :: List.map (fun (p, ins, outs) -> (SubPred p, ins, outs)) (S.list_preds ())
 
+  let init = S.init
   let empty () : t = None
 
   let simplify = function

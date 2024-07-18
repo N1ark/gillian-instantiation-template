@@ -30,6 +30,7 @@ let pred_to_str = function
   | Agree -> "agree"
 
 let list_preds () = [ (Agree, [], [ "value" ]) ]
+let init _ = ()
 let empty () : t = None
 
 let execute_action action s args =

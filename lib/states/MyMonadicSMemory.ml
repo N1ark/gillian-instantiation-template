@@ -4,7 +4,6 @@ open Gil_syntax
 module Containers = Gillian.Utils.Containers
 module DR = Delayed_result
 module Recovery_tactic = Gillian.General.Recovery_tactic
-module PFS = Engine.PFS
 
 module type S = sig
   (* Type of GIL general states *)
@@ -23,6 +22,7 @@ module type S = sig
   val pred_to_str : pred -> string
 
   (* Initialisation *)
+  val init : Yojson.Safe.t -> unit
   val empty : unit -> t
 
   (* Execute action *)
@@ -50,6 +50,10 @@ module type S = sig
   val assertions : t -> (pred * Expr.t list * Expr.t list) list
   val assertions_others : t -> Asrt.t list
 
+  (* Fixes *)
+  val can_fix : err_t -> bool
+  val get_fixes : err_t -> pred MyAsrt.t list list
+
   (* Helpers *)
   val lvars : t -> Containers.SS.t
   val alocs : t -> Containers.SS.t
@@ -64,17 +68,13 @@ module type S = sig
 
   (** Return all available (predicates * ins * outs) *)
   val list_preds : unit -> (pred * string list * string list) list
-
-  (* Fixes *)
-  val can_fix : err_t -> bool
-  val get_fixes : err_t -> pred MyAsrt.t list list
 end
 
 module Defaults = struct
   (* Assume no "global context" for now *)
-  type init_data = unit
+  type vt = Values.t
+  type st = Subst.t
 
-  let get_init_data _ = ()
   let is_overlapping_asrt _ = false
   let copy state = state (* assumes state is immutable *)
   let get_print_info _ _ = (Containers.SS.empty, Containers.SS.empty)
@@ -88,19 +88,31 @@ module Defaults = struct
   let mem_constraints _ = []
 end
 
-module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
+module Make (ID : Gillian.General.Init_data.S) (Mem : S) :
+  MonadicSMemory.S with type init_data = ID.t = struct
   include Mem
   include Defaults
 
   (* Can't do much more anyways *)
-  type vt = Values.t
-  type st = Subst.t
   type action_ret = (t * vt list, err_t) result
 
-  (* Wrap action / consume / produce with a nice type *)
-  let init = empty
+  (* Handle init data *)
 
-  type c_fix_t = pred * Expr.t list * Expr.t list
+  type init_data = ID.t
+
+  let init_data : init_data option ref = ref None
+
+  let init i =
+    init_data := Some i;
+    Mem.init (ID.to_yojson i);
+    empty ()
+
+  let get_init_data _ =
+    match !init_data with
+    | Some id -> id
+    | None -> failwith "No init data provided"
+
+  (* Wrap action / consume / produce with a nice type *)
 
   let execute_action ~(action_name : string) (state : t) (args : vt list) :
       action_ret Delayed.t =
@@ -124,6 +136,8 @@ module Make (Mem : S) : MonadicSMemory.S with type init_data = unit = struct
     let formulas = assertions_others s in
     let mapping (p, ins, outs) = Asrt.GA (pred_to_str p, ins, outs) in
     List.map mapping core_preds @ formulas
+
+  type c_fix_t = pred * Expr.t list * Expr.t list
 
   let get_fixes _ _ _ e =
     let rec build_fixes (corepreds, fmls, types, specvars) fix =

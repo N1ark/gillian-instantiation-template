@@ -32,6 +32,7 @@ let pred_to_str = function
   | PointsTo -> "points_to"
 
 let list_preds () = [ (PointsTo, [], [ "value" ]) ]
+let init _ = ()
 let empty () : t = None
 
 let execute_action action s args =

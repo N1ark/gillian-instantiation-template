@@ -32,6 +32,7 @@ let pred_to_str = function
   | Frac -> "frac"
 
 let list_preds () = [ (Frac, [ "fraction" ], [ "value" ]) ]
+let init _ = ()
 let empty () : t = None
 
 let execute_action action s args =

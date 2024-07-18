@@ -53,6 +53,7 @@ module Make (S : MyMonadicSMemory.S) :
          (fun (p, args, ret) -> (SubPred p, "offset" :: args, ret))
          (S.list_preds ())
 
+  let init = S.init
   let empty () : t = (ExpMap.empty, None)
 
   let validate_index (_, n) idx =

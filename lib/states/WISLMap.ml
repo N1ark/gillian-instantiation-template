@@ -60,6 +60,7 @@ module Make (S : MyMonadicSMemory.S) :
   let list_preds () =
     List.map (fun (p, ins, outs) -> (p, "index" :: ins, outs)) (S.list_preds ())
 
+  let init = S.init
   let empty () : t = SMap.empty
 
   let validate_index (h : t) idx =

@@ -48,6 +48,10 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
   type err_t = MismatchedState | E1 of S1.err_t | E2 of S2.err_t
   [@@deriving show, yojson]
 
+  let init i =
+    S1.init i;
+    S2.init i
+
   let empty () = None
 
   let get_s1 = function
