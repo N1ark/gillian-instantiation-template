@@ -76,38 +76,30 @@ module ExtendMemory (S : C_PMapType) = struct
 
   let execute_action action s args =
     match action with
-    | Base a -> execute_action a s args
+    | Base a -> (
+        let open Delayed.Syntax in
+        let action = S.action_to_str a in
+        let args =
+          (* Move index to be the first argument *)
+          match (action, args) with
+          | "load", c :: loc :: rest | "store", c :: loc :: rest ->
+              loc :: c :: rest
+          | _ -> args
+        in
+        let+ r = execute_action a s args in
+        match (action, r) with
+        (* remove returned index (not needed in C) *)
+        | "alloc", r -> r
+        | _, Ok (s', _ :: rest) -> Ok (s', rest)
+        | _, r -> r)
     | Move -> exec_move s args
     | SetZeros -> exec_set_zeros s args
 end
 
-(* Move index to be the first argument *)
-module ArgRelocateInjection (S : MyMonadicSMemory) = struct
-  include DummyInject (S)
-
-  let pre_execute_action action (s, args) =
-    match (action, args) with
-    | "load", c :: loc :: rest | "store", c :: loc :: rest ->
-        Delayed.return (s, loc :: c :: rest)
-    | _, _ -> Delayed.return (s, args)
-
-  let post_execute_action action (s, a, r) =
-    match action with
-    | "dropperm" | "weakvalidpointer" | "getcurperm" | "store" | "load" -> (
-        match r with
-        (* C doesn't need returned index *)
-        | _ :: rest -> Delayed.return (s, a, rest)
-        | _ -> Delayed.return (s, a, r))
-    | _ -> Delayed.return (s, a, r)
-end
-
 module Wrap (S : C_PMapType) = struct
-  module Intermediary = ExtendMemory (S)
+  module CMapMemory = ExtendMemory (S)
 
-  module CMapMemory : MyMonadicSMemory =
-    Injector (ArgRelocateInjection (Intermediary)) (Intermediary)
-
-  include
+  module StateWithGEnv =
     Product
       (struct
         let id1 = "mem_"
@@ -115,6 +107,10 @@ module Wrap (S : C_PMapType) = struct
       end)
       (CMapMemory)
       (CGEnv)
+
+  include StateWithGEnv
+
+  let pp f (s1, _) = CMapMemory.pp f s1
 end
 
 module MonadicSMemory_Base = Wrap (BaseMemory)

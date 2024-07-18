@@ -45,8 +45,7 @@ end) : Injection with type t = S.t = struct
   let post_instantiate = Fun.id
 end
 
-module Make (I : Injection) (S : MyMonadicSMemory.S with type t = I.t) :
-  MyMonadicSMemory.S with type t = S.t = struct
+module Make (I : Injection) (S : MyMonadicSMemory.S with type t = I.t) = struct
   include S
 
   let consume p s ins =

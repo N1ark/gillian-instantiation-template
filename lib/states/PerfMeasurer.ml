@@ -57,7 +57,7 @@ module Make (S : SMemory.S) = struct
       |> List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2)
     in
     let pp_one ft (name, (count, time)) =
-      pf ft "@[%s: %.1fms (%d)@]" name time count
+      pf ft "@[%s: %.4fms (%d)@]" name time count
     in
     (list ~sep:(any "@\n") pp_one) ft vals
 

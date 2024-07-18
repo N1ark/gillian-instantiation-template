@@ -1,10 +1,9 @@
+open Gil_syntax
 open Gillian.Monadic
 module DR = Delayed_result
-open Gil_syntax
 module Global_env = Cgil_lib.Global_env
 
-(* GEnv State *)
-module M : States.MyMonadicSMemory.S = struct
+module M : States.MyMonadicSMemory.S with type t = Global_env.t = struct
   type t = Global_env.t [@@deriving yojson]
   type err_t = unit [@@deriving show, yojson]
   type action = GetDef
@@ -26,13 +25,12 @@ module M : States.MyMonadicSMemory.S = struct
     | Ok g -> init_data := g
     | Error e -> failwith ("Error when initialising C GEnv: " ^ e)
 
-  let empty = !init_data
+  let empty () = !init_data
 
   (* Execute action *)
   let execute_action GetDef s args =
     match args with
     | [ (Expr.Lit (Loc loc) | Expr.ALoc loc | Expr.LVar loc) ] -> (
-        Fmt.pr "State: %a\n" Global_env.pp !init_data;
         match Global_env.find_def_opt s loc with
         | Some def ->
             let v = Global_env.serialize_def def in

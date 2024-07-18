@@ -4,7 +4,7 @@ type ga = Single | Array | Hole | Zeros | Bounds
 let str_ac = function
   | DropPerm -> "dropperm"
   | WeakValidPointer -> "weakvalidpointer"
-  | GetCurPerm -> "getperm"
+  | GetCurPerm -> "getcurperm"
   | Store -> "store"
   | Load -> "load"
 

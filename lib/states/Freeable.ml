@@ -182,9 +182,11 @@ module Make (S : MyMonadicSMemory.S) :
 
   let get_fixes = function
     | SubError e ->
-        (* Fix can either be inner fix, or if empty the memory is freed! *)
-        (S.get_fixes e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred))
-        @ [ [ MyAsrt.CorePred (FreedPred, [], []) ] ]
+        S.get_fixes e |> MyUtils.deep_map (MyAsrt.map_cp lift_corepred)
+        (* Fix can either be inner fix, or if empty the memory is freed!
+           But Gillian C/WISL doesn't implement this so we comment it out
+           to have comparable performance *)
+        (* @ [ [ MyAsrt.CorePred (FreedPred, [], []) ] ]*)
     | MissingFreed -> [ [ MyAsrt.CorePred (FreedPred, [], []) ] ]
     | _ -> failwith "Invalid fix call"
 end

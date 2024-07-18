@@ -9,6 +9,6 @@
   gillian-js-libs.js2jsil_lib
   gillian-js-libs.semantics
   gillian-c-libs
-  compcert)
+  ppx_deriving_yojson.runtime)
  (preprocess
-  (pps gillian.ppx_sat)))
+  (pps gillian.ppx_sat ppx_deriving.std ppx_deriving_yojson)))

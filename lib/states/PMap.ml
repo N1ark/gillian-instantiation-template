@@ -160,10 +160,9 @@ struct
             else DR.error (NotAllocated idx'))
 
   let update_entry (h, d) idx idx' s =
-    match (idx = idx', S.is_empty s) with
-    | _, true -> (ExpMap.remove idx h, d)
-    | true, false -> (ExpMap.add idx s h, d)
-    | false, false -> (ExpMap.remove idx h |> ExpMap.add idx' s, d)
+    if S.is_empty s then (ExpMap.remove idx h, d)
+    else if Expr.equal idx idx' then (ExpMap.add idx s h, d)
+    else (ExpMap.remove idx h |> ExpMap.add idx' s, d)
 
   let execute_action action (s : t) args =
     let open Delayed.Syntax in

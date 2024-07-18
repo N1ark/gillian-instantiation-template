@@ -1159,7 +1159,7 @@ module M = struct
       root
 
   let init _ = ()
-  let empty = { bounds = None; root = None }
+  let empty () = { bounds = None; root = None }
 
   let is_empty { bounds; root } =
     Option.is_none bounds
@@ -1720,6 +1720,18 @@ module M = struct
         else fixes
     | MissingResource Unfixable -> []
     | _ -> failwith "BlockTree: Invalid get_fixes arguments"
+
+  let allocated_function : t =
+    {
+      bounds = Some (Expr.zero_i, Expr.one_i);
+      root =
+        Some
+          {
+            node = Node.make_owned ~perm:Nonempty ~mem_val:(Undef Totally);
+            span = (Expr.zero_i, Expr.one_i);
+            children = None;
+          };
+    }
 end
 
 module MT : States.MyMonadicSMemory.S = M
