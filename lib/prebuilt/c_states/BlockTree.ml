@@ -4,11 +4,17 @@ module Subst = Gillian.Symbolic.Subst
 module DR = Delayed_result
 module DO = Delayed_option
 module SS = Utils.Containers.SS
-module NSVal = SVal
-module SVal = MonadicSVal
-module SVArr = SVal.SVArray
 module CoreP = Constr.Core
 module MyAsrt = States.MyAsrt
+
+(* Import from Cgil lib: *)
+module CConstants = Cgil_lib.CConstants
+module Perm = Cgil_lib.Perm
+module ValueTranslation = Cgil_lib.ValueTranslation
+module Chunk = Cgil_lib.Chunk
+module NSVal = Cgil_lib.SVal
+module SVal = Cgil_lib.MonadicSVal
+module SVArr = SVal.SVArray
 
 let log_string s = Logging.verbose (fun fmt -> fmt "SHEAPTREE CHECKING: %s" s)
 
@@ -1038,16 +1044,8 @@ module Tree = struct
     | MemVal { mem_val = Zeros; exact_perm = perm; _ } ->
         [ CoreP.zeros ~low ~high ~perm ]
     | MemVal { mem_val = Single { chunk; value }; exact_perm = perm; _ } ->
-        let sval, _types = NSVal.to_gil_expr value in
-        (* TODO: how to add types to assertions while keeping the simple signature *)
-        (* let types =
-             List.map
-               (let open Formula.Infix in
-                fun (x, t) -> Asrt.Pure (Expr.typeof x) #== (Expr.type_ t))
-               types
-           in*)
+        let sval, _ = NSVal.to_gil_expr value in
         [ CoreP.single ~ofs:low ~chunk ~sval ~perm ]
-        (* :: types *)
     | MemVal { mem_val = Array { chunk; values }; exact_perm = perm; _ } -> (
         let chksize = Chunk.size_expr chunk in
         let total_size =
@@ -1058,13 +1056,8 @@ module Tree = struct
         | AllUndef -> [ CoreP.hole ~low ~high ~perm ]
         | AllZeros -> [ CoreP.zeros ~low ~high ~perm ]
         | array ->
-            (* TODO: how to keep pure expressions *)
-            let e, _learned =
-              SVArr.to_gil_expr_undelayed ~range:span array ~chunk
-            in
-            (* let learned = List.map (fun x -> Asrt.Pure x) learned in*)
-            [ CoreP.array ~ofs:low ~perm ~chunk ~size:total_size ~sval_arr:e ]
-        (*:: learned*))
+            let e, _ = SVArr.to_gil_expr_undelayed ~range:span array ~chunk in
+            [ CoreP.array ~ofs:low ~perm ~chunk ~size:total_size ~sval_arr:e ])
 
   let rec assertions_others { node; span; children; _ } =
     match node with
@@ -1076,7 +1069,6 @@ module Tree = struct
     | MemVal { mem_val = Zeros; _ } -> []
     | MemVal { mem_val = Single { value; _ }; _ } ->
         let _, types = NSVal.to_gil_expr value in
-        (* TODO: how to add types to assertions while keeping the simple signature *)
         List.map
           (let open Formula.Infix in
            fun (x, t) -> Asrt.Pure (Expr.typeof x) #== (Expr.type_ t))
@@ -1166,7 +1158,8 @@ module M = struct
       (Fmt.option ~none:(Fmt.any "EMPTY") Tree.pp)
       root
 
-  let empty () = { bounds = None; root = None }
+  let init _ = ()
+  let empty = { bounds = None; root = None }
 
   let is_empty { bounds; root } =
     Option.is_none bounds
@@ -1543,7 +1536,7 @@ module M = struct
         let chunk = ValueTranslation.chunk_of_string chunk_string in
         let** array, perm, s' = cons_array s ofs size chunk in
         let range = Range.of_low_chunk_and_size ofs chunk size in
-        let* array_e = MonadicSVal.SVArray.to_gil_expr ~chunk ~range array in
+        let* array_e = SVArr.to_gil_expr ~chunk ~range array in
         let perm_string = ValueTranslation.string_of_permission_opt perm in
         DR.ok (s', [ array_e; Expr.Lit (String perm_string) ])
     | Hole, [ low; high ] ->
@@ -1600,7 +1593,7 @@ module M = struct
         ] ) ->
         let perm = ValueTranslation.permission_of_string perm_string in
         let chunk = ValueTranslation.chunk_of_string chunk_string in
-        let arr = MonadicSVal.SVArray.of_gil_expr_exn arr_e in
+        let arr = SVArr.of_gil_expr_exn arr_e in
         prod_array s ofs size chunk arr perm |> filter_errors
     | Hole, [ low; high; Expr.Lit (String perm_string) ] ->
         let perm = ValueTranslation.permission_of_string perm_string in

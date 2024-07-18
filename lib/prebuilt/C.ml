@@ -1,8 +1,12 @@
 open Utils
 open Gil_syntax
-module BlockTree = C_states.BlockTree.M
 module Delayed = Gillian.Monadic.Delayed
 module DR = Gillian.Monadic.Delayed_result
+module Global_env = Cgil_lib.Global_env
+
+(* Import C-specific constructs *)
+module BlockTree = C_states.BlockTree.M
+module CGEnv = C_states.CGEnv.M
 
 (* Base memories *)
 module BaseBlock = Freeable (BlockTree)
@@ -21,12 +25,12 @@ module ExtendMemory (S : C_PMapType) = struct
 
   let action_to_str = function
     | Base a -> action_to_str a
-    | Move -> "mem_move"
-    | SetZeros -> "mem_setZeros"
+    | Move -> "move"
+    | SetZeros -> "setZeros"
 
   let action_from_str = function
-    | "mem_move" -> Some Move
-    | "mem_setZeros" -> Some SetZeros
+    | "move" -> Some Move
+    | "setZeros" -> Some SetZeros
     | str -> Option.map (fun a -> Base a) (action_from_str str)
 
   let list_actions () =
@@ -65,7 +69,7 @@ module ExtendMemory (S : C_PMapType) = struct
     | _ -> failwith "Invalid arguments for mem_move"
 
   let exec_set_zeros s args =
-    let pred = pred_from_str "mem_zeros" in
+    let pred = pred_from_str "zeros" in
     let pred = Option.get pred in
     let s' = produce pred s args in
     Delayed.map s' (fun s' -> Ok (s', []))
@@ -77,28 +81,19 @@ module ExtendMemory (S : C_PMapType) = struct
     | SetZeros -> exec_set_zeros s args
 end
 
-(* Mappings etc *)
-module CSubst : NameMap = struct
-  let action_substitutions = [ ("mem_alloc", "alloc"); ("mem_free", "free") ]
-  let pred_substitutions = [ ("mem_freed", "freed") ]
-end
-
+(* Move index to be the first argument *)
 module ArgRelocateInjection (S : MyMonadicSMemory) = struct
   include DummyInject (S)
 
   let pre_execute_action action (s, args) =
     match (action, args) with
-    | "mem_load", c :: loc :: rest | "mem_store", c :: loc :: rest ->
+    | "load", c :: loc :: rest | "store", c :: loc :: rest ->
         Delayed.return (s, loc :: c :: rest)
     | _, _ -> Delayed.return (s, args)
 
   let post_execute_action action (s, a, r) =
     match action with
-    | "mem_dropperm"
-    | "mem_weakvalidpointer"
-    | "mem_getcurperm"
-    | "mem_store"
-    | "mem_load" -> (
+    | "dropperm" | "weakvalidpointer" | "getcurperm" | "store" | "load" -> (
         match r with
         (* C doesn't need returned index *)
         | _ :: rest -> Delayed.return (s, a, rest)
@@ -109,16 +104,25 @@ end
 module Wrap (S : C_PMapType) = struct
   module Intermediary = ExtendMemory (S)
 
+  module CMapMemory : MyMonadicSMemory =
+    Injector (ArgRelocateInjection (Intermediary)) (Intermediary)
+
   include
-    Injector
-      (ArgRelocateInjection (Intermediary)) (Mapper (CSubst) (Intermediary))
+    Product
+      (struct
+        let id1 = "mem_"
+        let id2 = "genv_"
+      end)
+      (CMapMemory)
+      (CGEnv)
 end
 
+module MonadicSMemory_Base = Wrap (BaseMemory)
+module MonadicSMemory_ALoc = Wrap (ALocMemory)
+module MonadicSMemory_Split = Wrap (SplitMemory)
 module ParserAndCompiler = ParserAndCompiler.Dummy
 
 module ExternalSemantics =
   Gillian.General.External.Dummy (ParserAndCompiler.Annot)
 
-module MonadicSMemory_Base = Wrap (BaseMemory)
-module MonadicSMemory_ALoc = Wrap (ALocMemory)
-module MonadicSMemory_Split = Wrap (SplitMemory)
+module InitData = Cgil_lib.Global_env

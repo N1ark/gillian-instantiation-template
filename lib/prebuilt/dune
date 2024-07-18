@@ -8,6 +8,7 @@
   gillian.ppx_sat.runtime
   gillian-js-libs.js2jsil_lib
   gillian-js-libs.semantics
+  gillian-c-libs
   compcert)
  (preprocess
   (pps gillian.ppx_sat)))
