@@ -34,20 +34,13 @@ module BaseMemory =
     (LocationIndex)
     (Freeable (Injector (ListIndexRetInjection) (MemoryChunk)))
 
-module MapIndexRetInjection : Injection with type t = BaseMemory.t = struct
-  include DummyInject (BaseMemory)
+module ALocMemory =
+  ALocPMap (Freeable (Injector (ListIndexRetInjection) (MemoryChunk)))
 
-  let post_execute_action a (s, args, rets) =
-    match a with
-    | "alloc" -> Delayed.return (s, args, rets)
-    | _ ->
-        let rets' =
-          match (args, rets) with
-          | _, ([] as rets) | [], rets -> rets
-          | idx :: _, rets -> idx :: rets
-        in
-        Delayed.return (s, args, rets')
-end
+module SplitMemory =
+  SplitPMap
+    (LocationIndex)
+    (Freeable (Injector (ListIndexRetInjection) (MemoryChunk)))
 
 module WISLSubst : NameMap = struct
   let action_substitutions =
@@ -69,5 +62,6 @@ module ParserAndCompiler = ParserAndCompiler.Dummy
 module ExternalSemantics =
   Gillian.General.External.Dummy (ParserAndCompiler.Annot)
 
-module MonadicSMemory =
-  Mapper (WISLSubst) (Injector (MapIndexRetInjection) (BaseMemory))
+module MonadicSMemory_Base = Mapper (WISLSubst) (BaseMemory)
+module MonadicSMemory_ALoc = Mapper (WISLSubst) (ALocMemory)
+module MonadicSMemory_Split = Mapper (WISLSubst) (SplitMemory)

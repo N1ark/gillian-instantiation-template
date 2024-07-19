@@ -1,5 +1,19 @@
-module WISL = struct
-  module MonadicSMemory = WISL.MonadicSMemory
+module WISL_Base = struct
+  module MonadicSMemory = WISL.MonadicSMemory_Base
+  module ParserAndCompiler = WISL.ParserAndCompiler
+  module ExternalSemantics = WISL.ExternalSemantics
+  module InitData = Gillian.General.Init_data.Dummy
+end
+
+module WISL_ALoc = struct
+  module MonadicSMemory = WISL.MonadicSMemory_ALoc
+  module ParserAndCompiler = WISL.ParserAndCompiler
+  module ExternalSemantics = WISL.ExternalSemantics
+  module InitData = Gillian.General.Init_data.Dummy
+end
+
+module WISL_Split = struct
+  module MonadicSMemory = WISL.MonadicSMemory_Split
   module ParserAndCompiler = WISL.ParserAndCompiler
   module ExternalSemantics = WISL.ExternalSemantics
   module InitData = Gillian.General.Init_data.Dummy
