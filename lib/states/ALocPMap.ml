@@ -225,29 +225,40 @@ module Make (S : MyMonadicSMemory.S) = struct
 
   let substitution_in_place sub (h, d) =
     let open Delayed.Syntax in
-    let open MyUtils.Syntax in
-    let mapper (idx, s) =
-      let idx = Expr.loc_from_loc_name idx in
-      let idx' = Subst.subst_in_expr sub idx ~partial:true in
-      let*? idx' = get_loc idx' in
-      let+ s' = S.substitution_in_place sub s in
-      (idx', s')
+    let aloc_subst =
+      Subst.fold sub
+        (fun l r acc ->
+          match l with
+          | ALoc aloc -> (aloc, r) :: acc
+          | _ -> acc)
+        []
     in
-    let map_entries = SMap.bindings h in
-    let* sub_entries = Delayed.all (List.map mapper map_entries) in
-    let+ h' =
+    let* substituted =
+      SMap.fold
+        (fun k v acc ->
+          let* acc = acc in
+          let+ s' = S.substitution_in_place sub v in
+          SMap.add k s' acc)
+        h
+        (Delayed.return SMap.empty)
+    in
+    let* h' =
       List.fold_left
-        (fun acc (idx, s) ->
+        (fun acc (idx, idx') ->
           let* acc = acc in
           match SMap.find_opt idx acc with
-          | None -> Delayed.return (SMap.add idx s acc)
-          | Some s' ->
-              let+ s'' = S.compose s s' in
-              SMap.add idx s'' acc)
-        (Delayed.return SMap.empty)
-        sub_entries
+          | None -> Delayed.return acc
+          | Some s -> (
+              let idx' = get_loc_fast idx' in
+              match SMap.find_opt idx' acc with
+              | None -> Delayed.return (SMap.remove idx acc |> SMap.add idx' s)
+              | Some s' ->
+                  let+ s'' = S.compose s s' in
+                  SMap.remove idx acc |> SMap.add idx' s''))
+        (Delayed.return substituted)
+        aloc_subst
     in
-    (h', d)
+    Delayed.return (h', d)
 
   let lvars (h, _) =
     let open Containers.SS in

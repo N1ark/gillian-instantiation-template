@@ -287,14 +287,16 @@ struct
 
   let substitution_in_place sub (h, d) =
     let open Delayed.Syntax in
+    let subst = Subst.subst_in_expr sub ~partial:true in
     let mapper (idx, s) =
       let+ s' = S.substitution_in_place sub s in
-      let idx' = Subst.subst_in_expr sub idx ~partial:true in
+      let idx' = subst idx in
       (idx', s')
     in
-    let map_entries = ExpMap.bindings h in
-    let* sub_entries = Delayed.all (List.map mapper map_entries) in
-    let+ h' = ExpMap.sym_compose S.compose sub_entries ExpMap.empty in
+    let* sub_entries = ExpMap.bindings h |> List.map mapper |> Delayed.all in
+    let+ h' =
+      ExpMap.sym_compose ~matching:false S.compose sub_entries ExpMap.empty
+    in
     (h', d)
 
   let lvars (h, d) =

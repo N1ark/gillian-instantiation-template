@@ -168,7 +168,9 @@ module Make (S : MyMonadicSMemory.S) :
     in
     let map_entries = ExpMap.bindings b in
     let* sub_entries = Delayed.all (List.map mapper map_entries) in
-    let+ b' = ExpMap.sym_compose S.compose sub_entries ExpMap.empty in
+    let+ b' =
+      ExpMap.sym_compose ~matching:false S.compose sub_entries ExpMap.empty
+    in
     let n' = Option.map (Subst.subst_in_expr sub ~partial:true) n in
     (b', n')
 

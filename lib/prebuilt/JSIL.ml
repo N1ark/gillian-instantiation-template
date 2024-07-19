@@ -93,7 +93,6 @@ module JSFilter : FilterVals = struct
   let action_filters =
     [
       "GetCell";
-      "test";
       "SetCell";
       "Alloc";
       "DeleteObject";
