@@ -8,7 +8,6 @@ module Recovery_tactic = Gillian.General.Recovery_tactic
 (** Value * Fraction *)
 type t = (Expr.t * Expr.t) option [@@deriving show, yojson]
 
-type c_fix_t = unit [@@deriving show]
 type err_t = MissingState | NotEnoughPermission [@@deriving show, yojson]
 type action = Load | Store
 type pred = Frac

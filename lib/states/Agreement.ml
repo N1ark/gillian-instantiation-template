@@ -6,7 +6,6 @@ module DR = Delayed_result
 module Recovery_tactic = Gillian.General.Recovery_tactic
 
 type t = Expr.t option [@@deriving yojson]
-type c_fix_t = FAddState of Values.t [@@deriving show]
 type err_t = MissingState [@@deriving show, yojson]
 type action = Load
 type pred = Agree

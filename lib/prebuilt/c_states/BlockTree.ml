@@ -1117,11 +1117,6 @@ module M = struct
 
   type err_t = err [@@deriving show, yojson]
 
-  type c_fix_t =
-    | AddSingle of { ofs : Expr.t; value : Expr.t; chunk : Chunk.t }
-    | AddUnitialized of { low : Expr.t; high : Expr.t; chunk : Chunk.t }
-  [@@deriving show, yojson]
-
   type t = { bounds : Range.t option; root : Tree.t option }
   [@@deriving show, yojson]
 

@@ -39,4 +39,3 @@ module PMapEnt = States.PMap.MakeEnt
 module Product = Product.Make
 module SplitPMap = SplitPMap.Make
 module Sum = Sum.Make
-module WISLMap = WISLMap.Make
