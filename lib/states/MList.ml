@@ -110,10 +110,7 @@ module Make (S : MyMonadicSMemory.S) :
     | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
     | Length, [ n' ] -> (
         match n with
-        | Some _ ->
-            Logging.normal (fun m ->
-                m "Warning MList: vanishing due to duplicate length");
-            Delayed.vanish ()
+        | Some _ -> Delayed.vanish ()
         | None -> Delayed.return (b, Some n'))
     | Length, _ -> failwith "Invalid arguments for length produce"
 
