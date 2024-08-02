@@ -1,5 +1,4 @@
 open Gillian.Monadic
-open Gil_syntax
 module Containers = Gillian.Utils.Containers
 open MyUtils
 
@@ -97,7 +96,10 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     (s1', s2')
 
   let is_fully_owned (s1, s2) e =
-    Formula.Infix.((S1.is_fully_owned s1 e) #&& (S2.is_fully_owned s2 e))
+    let open Delayed.Syntax in
+    let* owned1 = S1.is_fully_owned s1 e in
+    let+ owned2 = S2.is_fully_owned s2 e in
+    owned1 && owned2
 
   let is_empty (s1, s2) = S1.is_empty s1 && S2.is_empty s2
   let is_concrete (s1, s2) = S1.is_concrete s1 && S2.is_concrete s2
@@ -110,9 +112,9 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   let substitution_in_place st (s1, s2) =
     let open Delayed.Syntax in
-    let* s1' = S1.substitution_in_place st s1 in
-    let+ s2' = S2.substitution_in_place st s2 in
-    (s1', s2')
+    let+ s1' = S1.substitution_in_place st s1 in
+    (* let+ s2' = S2.substitution_in_place st s2 in*)
+    (s1', s2)
 
   let lvars (s1, s2) = Containers.SS.union (S1.lvars s1) (S2.lvars s2)
   let alocs (s1, s2) = Containers.SS.union (S1.alocs s1) (S2.alocs s2)

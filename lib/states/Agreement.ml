@@ -69,7 +69,7 @@ let compose s1 s2 =
   | _, None -> Delayed.return s1
   | Some v1, Some v2 -> Delayed.return ~learned:[ v1 #== v2 ] (Some v1)
 
-let is_fully_owned _ _ = Formula.False
+let is_fully_owned _ _ = Delayed.return false
 
 let is_empty = function
   | None -> true

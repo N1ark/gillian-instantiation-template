@@ -236,16 +236,20 @@ struct
     (ch, sh, d)
 
   let is_fully_owned s e =
-    let open Formula.Infix in
+    let open Delayed.Syntax in
     match s with
     | ch, sh, Some _ ->
-        let c_owned =
-          ExpMap.fold
-            (fun _ s acc -> acc #&& (S.is_fully_owned s e))
-            ch Formula.True
+        let rec check l acc =
+          let* acc = acc in
+          match (acc, l) with
+          | false, _ -> Delayed.return false
+          | true, [] -> Delayed.return true
+          | true, (_, hd) :: tl -> check tl (S.is_fully_owned hd e)
         in
-        ExpMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s e)) sh c_owned
-    | _, _, None -> Formula.False
+        Delayed.return true
+        |> check (ExpMap.bindings ch)
+        |> check (ExpMap.bindings sh)
+    | _, _, None -> Delayed.return false
 
   let is_empty = function
     | _, _, Some _ -> false
@@ -315,7 +319,10 @@ struct
     @ List.concat_map (fun (_, v) -> S.assertions_others v) (ExpMap.bindings sh)
 
   (* TODO *)
-  let get_recovery_tactic _ _ = Gillian.General.Recovery_tactic.none
+  let get_recovery_tactic _ = function
+    | NotAllocated idx | InvalidIndexValue idx ->
+        Gillian.General.Recovery_tactic.try_unfold [ idx ]
+    | _ -> Gillian.General.Recovery_tactic.none
 
   let can_fix = function
     | SubError (_, _, e) -> S.can_fix e

@@ -91,8 +91,8 @@ let compose (s1 : t) (s2 : t) =
 
 let is_fully_owned s _ =
   match s with
-  | None -> Formula.False
-  | Some (_, q) -> Formula.Infix.(q #== (Expr.num 1.))
+  | None -> Delayed.return false
+  | Some (_, q) -> Delayed.check_sat Formula.Infix.(q #== (Expr.num 1.))
 
 let is_empty = function
   | None -> true

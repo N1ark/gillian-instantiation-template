@@ -8,7 +8,7 @@ module UnsoundAlwaysOwned (S : States.MyMonadicSMemory.S) :
   States.MyMonadicSMemory.S with type t = S.t = struct
   include S
 
-  let is_fully_owned _ _ = Formula.True
+  let is_fully_owned _ _ = Delayed.return true
 end
 
 (* Default instantiation is Nono *)

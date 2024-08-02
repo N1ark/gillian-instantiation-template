@@ -39,7 +39,7 @@ module type S = sig
   val compose : t -> t -> t Delayed.t
 
   (* For Freeable *)
-  val is_fully_owned : t -> Expr.t list -> Formula.t
+  val is_fully_owned : t -> Expr.t list -> bool Delayed.t
 
   (* For PMap *)
   val is_empty : t -> bool
@@ -162,9 +162,6 @@ module Make (ID : Gillian.General.Init_data.S) (Mem : S) :
   (* Override methods to keep implementations light *)
   let clear _ = empty ()
   let pp_err = pp_err_t
-
-  let substitution_in_place st s =
-    if Subst.is_empty st then Delayed.return s else substitution_in_place st s
 
   let pp_c_fix (fmt : Format.formatter) ((p, ins, outs) : c_fix_t) : unit =
     Format.fprintf fmt "<%s>(%a;%a)" (pred_to_str p)

@@ -1618,12 +1618,16 @@ module M = struct
         Delayed.vanish ()
 
   let is_fully_owned { root; bounds } e =
+    let open Delayed.Syntax in
     match (root, bounds, e) with
-    | Some _, Some bounds, [ low; high ] ->
-        (* This is inaccurate; missing permission checking and more stuff done in the original,
-           but would require is_fully_owned to be able to branch which isn't the case. *)
-        Range.is_equal (low, high) bounds
-    | _ -> Formula.False
+    | Some root, Some bounds, [ low; high ] ->
+        if%ent Range.is_equal (low, high) bounds then
+          let+ res = Tree.cons_node root (low, high) in
+          match res with
+          | Ok (node, _) -> Node.check_perm (Some Freeable) node |> Result.is_ok
+          | Error _ -> false
+        else Delayed.return false
+    | _ -> Delayed.return false
 
   let substitution_in_place subst s =
     let le_subst = Subst.subst_in_expr subst ~partial:true in

@@ -70,8 +70,8 @@ let compose s1 s2 =
 
 let is_fully_owned s _ =
   match s with
-  | None -> Formula.False
-  | Some _ -> Formula.True
+  | None -> Delayed.return false
+  | Some _ -> Delayed.return true
 
 let is_empty = function
   | None -> true

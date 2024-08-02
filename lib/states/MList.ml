@@ -123,13 +123,18 @@ module Make (S : MyMonadicSMemory.S) :
     | (_, Some _), (_, Some _) -> Delayed.vanish ()
 
   let is_fully_owned s e =
-    let open Formula.Infix in
+    let open Delayed.Syntax in
     match s with
     | b, Some _ ->
-        ExpMap.fold
-          (fun _ v acc -> acc #&& (S.is_fully_owned v e))
-          b Formula.True
-    | _, None -> Formula.False
+        let rec check l acc =
+          let* acc = acc in
+          match (acc, l) with
+          | false, _ -> Delayed.return false
+          | true, [] -> Delayed.return true
+          | true, (_, hd) :: tl -> check tl (S.is_fully_owned hd e)
+        in
+        check (ExpMap.bindings b) (Delayed.return true)
+    | _, None -> Delayed.return false
 
   let is_empty = function
     | b, None -> ExpMap.for_all (fun _ v -> S.is_empty v) b

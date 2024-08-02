@@ -249,7 +249,12 @@ struct
         match s with
         | _, Some _ -> Delayed.vanish ()
         | h, None ->
-            Delayed.return (h, Some d') (* TODO: if%sat typeof set ?? *))
+            (* This would be the correct implementation, but the handling of sets is bad so
+               it creates all sorts of issues (eg. matching plans)...
+               let dom = ExpMap.bindings h |> List.map fst in
+               let dom = Expr.ESet dom in*)
+            Delayed.return (*~learned:[ Formula.SetSub (dom, d') ]*) (h, Some d')
+        )
     | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
 
   let compose (h1, d1) (h2, d2) =
@@ -264,13 +269,18 @@ struct
     (h, d)
 
   let is_fully_owned s e =
-    let open Formula.Infix in
+    let open Delayed.Syntax in
     match s with
     | h, Some _ ->
-        ExpMap.fold
-          (fun _ s acc -> acc #&& (S.is_fully_owned s e))
-          h Formula.True
-    | _, None -> Formula.False
+        let rec check l acc =
+          let* acc = acc in
+          match (acc, l) with
+          | false, _ -> Delayed.return false
+          | true, [] -> Delayed.return true
+          | true, (_, hd) :: tl -> check tl (S.is_fully_owned hd e)
+        in
+        check (ExpMap.bindings h) (Delayed.return true)
+    | _, None -> Delayed.return false
 
   let is_empty = function
     | _, Some _ -> false
@@ -333,6 +343,8 @@ struct
     | SubError (_, idx', e) ->
         let s = ExpMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
         S.get_recovery_tactic s e
+    | NotAllocated idx | InvalidIndexValue idx ->
+        Gillian.General.Recovery_tactic.try_unfold [ idx ]
     | _ -> Gillian.General.Recovery_tactic.none
 
   let can_fix = function

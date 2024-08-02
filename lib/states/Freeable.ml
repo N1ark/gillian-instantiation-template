@@ -1,7 +1,6 @@
 open Gillian.Utils
 open Gillian.Monadic
 open Gillian.Symbolic
-open Gil_syntax
 module DR = Delayed_result
 
 type 'a freeable = None | Freed | SubState of 'a [@@deriving yojson, show]
@@ -76,7 +75,8 @@ module Make (S : MyMonadicSMemory.S) :
         | Error e -> Error (SubError e))
     | SubAction _, Freed -> DR.error UseAfterFree
     | Free, SubState s ->
-        if%sat S.is_fully_owned s args then DR.ok (Freed, [])
+        let* is_fully_owned = S.is_fully_owned s args in
+        if is_fully_owned then DR.ok (Freed, [])
         else DR.error NotEnoughResourceToFree
     | Free, Freed -> DR.error DoubleFree
     | Free, None -> DR.error NotEnoughResourceToFree
@@ -125,8 +125,8 @@ module Make (S : MyMonadicSMemory.S) :
   let is_fully_owned s e =
     match s with
     | SubState s -> S.is_fully_owned s e
-    | Freed -> Formula.True
-    | None -> Formula.False
+    | Freed -> Delayed.return true
+    | None -> Delayed.return false
 
   let is_empty = function
     | SubState s -> S.is_empty s

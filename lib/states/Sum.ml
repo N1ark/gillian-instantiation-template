@@ -1,6 +1,5 @@
 open Gillian.Utils
 open Gillian.Monadic
-open Gil_syntax
 open MyUtils
 module DR = Delayed_result
 
@@ -131,7 +130,7 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
     match s with
     | S1 s1 -> S1.is_fully_owned s1 e
     | S2 s2 -> S2.is_fully_owned s2 e
-    | None -> Formula.True
+    | None -> Delayed.return true
 
   let is_empty = function
     (* Technically these two branches aren't needed because we automatically switch to None if

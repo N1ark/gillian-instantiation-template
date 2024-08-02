@@ -102,25 +102,22 @@ module Make (S : MyMonadicSMemory.S) = struct
 
   let validate_index ((h, d) : t) idx =
     let open Delayed.Syntax in
-    let open DR.Syntax in
     let* idx_s = MyUtils.get_loc idx in
-    let** idx_s =
-      match idx_s with
-      | Some s -> DR.ok s
-      | None -> DR.error (InvalidIndexValue idx)
-    in
-    let idx_e = Expr.loc_from_loc_name idx_s in
-    let res = SMap.find_opt idx_s h in
-    match (res, d) with
-    | Some v, _ -> DR.ok (idx_e, v)
-    (* If the cell is not found, it is initialised to empty. Trust the below state
-       models to raise a Miss error, that will then be wrapped and taken care of.
-       Otherwise we would need to raise a miss error that doesn't make sense since it can't
-       really be fixed; there is no 'cell' predicate in the PMap, it relies on the sub
-       states' predicates being extended with an index in-argument. *)
-    | None, None -> DR.ok (idx_e, S.empty ())
-    | None, Some d when SS.mem idx_s d -> DR.ok (idx_e, S.empty ())
-    | None, Some _ -> DR.error (NotAllocated idx_e)
+    match idx_s with
+    | Some s -> (
+        let idx_e = Expr.loc_from_loc_name s in
+        let res = SMap.find_opt s h in
+        match (res, d) with
+        | Some v, _ -> DR.ok (idx_e, v)
+        (* If the cell is not found, it is initialised to empty. Trust the below state
+           models to raise a Miss error, that will then be wrapped and taken care of.
+           Otherwise we would need to raise a miss error that doesn't make sense since it can't
+           really be fixed; there is no 'cell' predicate in the PMap, it relies on the sub
+           states' predicates being extended with an index in-argument. *)
+        | None, None -> DR.ok (idx_e, S.empty ())
+        | None, Some d when SS.mem s d -> DR.ok (idx_e, S.empty ())
+        | None, Some _ -> DR.error (NotAllocated idx_e))
+    | None -> DR.error (InvalidIndexValue idx)
 
   (* ignore the 2nd parameter, but keep it for signature parity with PMap/SplitPMap *)
   let update_entry (h, d) _ idx s =
@@ -207,11 +204,15 @@ module Make (S : MyMonadicSMemory.S) = struct
     (h', d')
 
   let is_fully_owned s e =
-    let open Formula.Infix in
+    let open Delayed.Syntax in
     match s with
     | h, Some _ ->
-        SMap.fold (fun _ s acc -> acc #&& (S.is_fully_owned s e)) h Formula.True
-    | _, None -> Formula.False
+        SMap.fold
+          (fun _ s acc ->
+            let* acc = acc in
+            if acc then S.is_fully_owned s e else Delayed.return false)
+          h (Delayed.return true)
+    | _, None -> Delayed.return false
 
   let is_empty = function
     | _, Some _ -> false
@@ -258,7 +259,15 @@ module Make (S : MyMonadicSMemory.S) = struct
         (Delayed.return substituted)
         aloc_subst
     in
-    Delayed.return (h', d)
+    let d' =
+      Option.map
+        (SS.map (fun aloc ->
+             match List.find_opt (fun (l, _) -> l = aloc) aloc_subst with
+             | None -> aloc
+             | Some (_, aloc') -> get_loc_fast aloc'))
+        d
+    in
+    Delayed.return (h', d')
 
   let lvars (h, _) =
     let open Containers.SS in
@@ -299,6 +308,8 @@ module Make (S : MyMonadicSMemory.S) = struct
         let idx' = get_loc_fast idx' in
         let s = SMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
         S.get_recovery_tactic s e
+    | NotAllocated idx | InvalidIndexValue idx ->
+        Gillian.General.Recovery_tactic.try_unfold [ idx ]
     | _ -> Gillian.General.Recovery_tactic.none
 
   let can_fix = function

@@ -1,6 +1,7 @@
 open States
 
 (* Typings *)
+module type ActionAddition = ActionAdder.ActionAddition
 module type FilterVals = Filter.FilterVals
 module type IDs = MyUtils.IDs
 module type Injection = Injector.Injection
@@ -27,6 +28,7 @@ module Exclusive = Exclusive
 module Fractional = Fractional
 
 (* Transformers *)
+module ActionAdder = ActionAdder.Make
 module ALocPMap = ALocPMap.Make
 module Filter = Filter.Make
 module Freeable = Freeable.Make
