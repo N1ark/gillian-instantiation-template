@@ -304,13 +304,16 @@ module Make (S : MyMonadicSMemory.S) = struct
     List.concat_map (fun (_, v) -> S.assertions_others v) (SMap.bindings h)
 
   let get_recovery_tactic (h, _) = function
-    | SubError (_, idx', e) ->
-        let idx' = get_loc_fast idx' in
-        let s = SMap.find_opt idx' h |> Option.value ~default:(S.empty ()) in
-        S.get_recovery_tactic s e
+    | SubError (_, idx, e) ->
+        let idx_s = get_loc_fast idx in
+        let s = SMap.find_opt idx_s h |> Option.value ~default:(S.empty ()) in
+        Gillian.General.Recovery_tactic.merge
+          (S.get_recovery_tactic s e)
+          (Gillian.General.Recovery_tactic.try_unfold [ idx ])
     | NotAllocated idx | InvalidIndexValue idx ->
         Gillian.General.Recovery_tactic.try_unfold [ idx ]
-    | _ -> Gillian.General.Recovery_tactic.none
+    | MissingDomainSet | DomainSetNotFullyOwned ->
+        Gillian.General.Recovery_tactic.none
 
   let can_fix = function
     | SubError (_, _, e) -> S.can_fix e

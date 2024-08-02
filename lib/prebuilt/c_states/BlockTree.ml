@@ -1157,8 +1157,7 @@ module M = struct
   let empty () = { bounds = None; root = None }
 
   let is_empty { bounds; root } =
-    Option.is_none bounds
-    && Option.fold ~none:true ~some:(fun root -> Tree.is_empty root) root
+    Option.is_none bounds && Option.fold ~none:true ~some:Tree.is_empty root
 
   let is_concrete _ =
     Logging.tmi (fun f ->

@@ -216,7 +216,9 @@ module Make (S : MyMonadicSMemory.S) :
   let get_recovery_tactic (b, _) = function
     | SubError (idx, e) ->
         let s = ExpMap.find_opt idx b |> Option.value ~default:(S.empty ()) in
-        S.get_recovery_tactic s e
+        Gillian.General.Recovery_tactic.merge
+          (Gillian.General.Recovery_tactic.try_unfold [ idx ])
+          (S.get_recovery_tactic s e)
     | _ -> Gillian.General.Recovery_tactic.none
 
   let can_fix = function

@@ -54,10 +54,7 @@ module Make (S : MyMonadicSMemory.S) :
 
   let init = S.init
   let empty () : t = None
-
-  let simplify = function
-    | s when S.is_empty s -> None
-    | s -> SubState s
+  let simplify s = if S.is_empty s then None else SubState s
 
   let execute_action action s (args : Values.t list) :
       (t * Values.t list, err_t) DR.t =

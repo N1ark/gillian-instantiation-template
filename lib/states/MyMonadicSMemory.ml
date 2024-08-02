@@ -27,13 +27,13 @@ module type S = sig
 
   (* Execute action *)
   val execute_action :
-    action -> t -> Values.t list -> (t * Values.t list, err_t) result Delayed.t
+    action -> t -> Expr.t list -> (t * Expr.t list, err_t) result Delayed.t
 
   (* Consume-Produce *)
   val consume :
-    pred -> t -> Values.t list -> (t * Values.t list, err_t) result Delayed.t
+    pred -> t -> Expr.t list -> (t * Expr.t list, err_t) result Delayed.t
 
-  val produce : pred -> t -> Values.t list -> t Delayed.t
+  val produce : pred -> t -> Expr.t list -> t Delayed.t
 
   (* Composition *)
   val compose : t -> t -> t Delayed.t
@@ -58,7 +58,7 @@ module type S = sig
   val lvars : t -> Containers.SS.t
   val alocs : t -> Containers.SS.t
   val substitution_in_place : Subst.t -> t -> t Delayed.t
-  val get_recovery_tactic : t -> err_t -> Values.t Recovery_tactic.t
+  val get_recovery_tactic : t -> err_t -> Expr.t Recovery_tactic.t
   val pp : Format.formatter -> t -> unit
 
   (* Debug *)
@@ -72,7 +72,7 @@ end
 
 module Defaults = struct
   (* Assume no "global context" for now *)
-  type vt = Values.t
+  type vt = Expr.t
   type st = Subst.t
 
   let is_overlapping_asrt _ = false

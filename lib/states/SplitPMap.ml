@@ -318,8 +318,16 @@ struct
     List.concat_map (fun (_, v) -> S.assertions_others v) (ExpMap.bindings ch)
     @ List.concat_map (fun (_, v) -> S.assertions_others v) (ExpMap.bindings sh)
 
-  (* TODO *)
-  let get_recovery_tactic _ = function
+  let get_recovery_tactic (ch, sh, _) = function
+    | SubError (_, idx, e) ->
+        let s =
+          match ExpMap.find_opt idx ch with
+          | Some s -> Some s
+          | None -> ExpMap.find_opt idx sh
+        in
+        Gillian.General.Recovery_tactic.merge
+          (S.get_recovery_tactic (Option.value ~default:(S.empty ()) s) e)
+          (Gillian.General.Recovery_tactic.try_unfold [ idx ])
     | NotAllocated idx | InvalidIndexValue idx ->
         Gillian.General.Recovery_tactic.try_unfold [ idx ]
     | _ -> Gillian.General.Recovery_tactic.none
