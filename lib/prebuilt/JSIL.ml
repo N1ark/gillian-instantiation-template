@@ -3,14 +3,6 @@ open Utils
 open Gil_syntax
 module ExpMap = States.MyUtils.ExpMap
 
-(* Allow freeable to always free (since it's ok in JS) *)
-module UnsoundAlwaysOwned (S : States.MyMonadicSMemory.S) :
-  States.MyMonadicSMemory.S with type t = S.t = struct
-  include S
-
-  let is_fully_owned _ _ = Delayed.return true
-end
-
 (* Default instantiation is Nono *)
 module StringIndex = struct
   include StringIndex
@@ -34,6 +26,37 @@ module PatchedProduct
     ((s1, s2), v1 @ v2)
 
   let pp ft (s1, s2) = Fmt.pf ft "%a with metadata %a" S1.pp s1 S2.pp s2
+end
+
+(* Add an action to delete objects *)
+
+module DeleteActionAddition (S : MyMonadicSMemory) :
+  ActionAddition with type t = S.t = struct
+  type t = S.t
+  type action = Delete
+  type err_t = DeleteNotFullyOwned [@@deriving show, yojson]
+
+  let list_actions () = [ (Delete, [], []) ]
+
+  let action_from_str = function
+    | "delete" -> Some Delete
+    | _ -> None
+
+  let action_to_str = function
+    | Delete -> "delete"
+
+  let execute_action a _ _ =
+    match a with
+    | Delete -> Delayed.return (Ok (S.empty (), []))
+
+  let can_fix = function
+    | DeleteNotFullyOwned -> false
+
+  let get_fixes = function
+    | DeleteNotFullyOwned -> []
+
+  let get_recovery_tactic _ = function
+    | DeleteNotFullyOwned -> Gillian.General.Recovery_tactic.none
 end
 
 (* the "Props" predicate considers its out an in, so it must be removed
@@ -68,7 +91,7 @@ module JSSubst : NameMap = struct
       ("SetCell", "left_store");
       ("GetAllProps", "left_inner_get_domainset");
       ("Alloc", "alloc");
-      ("DeleteObject", "free");
+      ("DeleteObject", "delete");
       ("GetMetadata", "right_load");
     ]
 
@@ -137,16 +160,13 @@ end) =
     end)
     (S)
 
-(* The content of memory at a given location: "freeable" object * metadata address
-   Note JS doesn't actually have a freed, but rather just erases the field.
-   In practice the field doesn't get accessed anyways so it not existing or being
-   Freed should behave the same. A post-action injection could be used to replace
-   Freed with None for better fidelity. *)
-module BaseMemoryContent (S : MyMonadicSMemory) =
-  Freeable
-    (UnsoundAlwaysOwned
-       (PatchedProduct (IDs) (Mapper (JSSubstInner) (MoveInToOut (S)))
-          (Agreement)))
+(* The content of memory at a given location: object * metadata address *)
+module BaseMemoryContent (S : MyMonadicSMemory) = struct
+  module S =
+    PatchedProduct (IDs) (Mapper (JSSubstInner) (MoveInToOut (S))) (Agreement)
+
+  include ActionAdder (DeleteActionAddition (S)) (S)
+end
 
 (* Override pretty printing, implement `is_not_nono` *)
 module ObjectBase = struct
