@@ -121,14 +121,12 @@ struct
                     else DR.error (NotAllocated idx'))))
 
   let update_entry (ch, sh, d) idx idx' s =
-    let is_emp = S.is_empty s in
     (* remove from both (dont know where it was) *)
     let ch', sh' = (ExpMap.remove idx ch, ExpMap.remove idx sh) in
-    if is_emp then (ch', sh', d)
-    else
-      let is_c = Expr.is_concrete idx' && S.is_concrete s in
-      if is_c then (ExpMap.add idx' s ch', sh', d)
-      else (ch', ExpMap.add idx' s sh', d)
+    if S.is_empty s then (ch', sh', d)
+    else if Expr.is_concrete idx' && S.is_concrete s then
+      (ExpMap.add idx' s ch', sh', d)
+    else (ch', ExpMap.add idx' s sh', d)
 
   let execute_action action (s : t) args =
     let open Delayed.Syntax in

@@ -34,6 +34,15 @@ type err =
 
 exception FatalErr of err
 
+let sval_is_concrete = function
+  | SVal.SUndefined -> true
+  | Sptr (_, e) | SVint e | SVlong e | SVsingle e | SVfloat e ->
+      Expr.is_concrete e
+
+let svarr_is_concrete = function
+  | SVArr.Arr e -> Expr.is_concrete e
+  | AllUndef | AllZeros -> true
+
 module Range = struct
   type t = Expr.t * Expr.t [@@deriving yojson]
 
@@ -85,6 +94,7 @@ module Range = struct
   let lvars (a, b) = SS.union (Expr.lvars a) (Expr.lvars b)
   let alocs (a, b) = SS.union (Expr.alocs a) (Expr.alocs b)
   let substitution ~le_subst (a, b) = (le_subst a, le_subst b)
+  let is_concrete (a, b) = Expr.is_concrete a && Expr.is_concrete b
 end
 
 module Node = struct
@@ -122,6 +132,15 @@ module Node = struct
         mem_val : mem_val;
       }
   [@@deriving yojson]
+
+  let is_concrete = function
+    | NotOwned _ -> true
+    | MemVal { mem_val; _ } -> (
+        match mem_val with
+        | Zeros -> true
+        | Undef _ -> true
+        | Single { value; _ } -> sval_is_concrete value
+        | Array { values; _ } -> svarr_is_concrete values)
 
   let make_owned ~mem_val ~perm =
     MemVal { mem_val; min_perm = perm; exact_perm = Some perm }
@@ -537,6 +556,14 @@ module Tree = struct
       in
       make_node ~name ~value ?children ()
   end
+
+  let rec is_concrete { node; span; children } =
+    if not (Node.is_concrete node) then false
+    else if not (Range.is_concrete span) then false
+    else
+      match children with
+      | None -> true
+      | Some (a, b) -> is_concrete a && is_concrete b
 
   let box_range_and_node span node =
     let open PrintBox in
@@ -1159,10 +1186,9 @@ module M = struct
   let is_empty { bounds; root } =
     Option.is_none bounds && Option.fold ~none:true ~some:Tree.is_empty root
 
-  let is_concrete _ =
-    Logging.tmi (fun f ->
-        f "Need to implement BlockTree.is_concrete ! Defaults to false !");
-    false
+  let is_concrete { bounds; root } =
+    Option.fold ~none:true ~some:Range.is_concrete bounds
+    && Option.fold ~none:true ~some:Tree.is_concrete root
 
   let lvars { bounds; root } =
     SS.union
