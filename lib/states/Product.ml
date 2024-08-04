@@ -112,9 +112,9 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   let substitution_in_place st (s1, s2) =
     let open Delayed.Syntax in
-    let+ s1' = S1.substitution_in_place st s1 in
-    (* let+ s2' = S2.substitution_in_place st s2 in*)
-    (s1', s2)
+    let* s1' = S1.substitution_in_place st s1 in
+    let+ s2' = S2.substitution_in_place st s2 in
+    (s1', s2')
 
   let lvars (s1, s2) = Containers.SS.union (S1.lvars s1) (S2.lvars s2)
   let alocs (s1, s2) = Containers.SS.union (S1.alocs s1) (S2.alocs s2)
