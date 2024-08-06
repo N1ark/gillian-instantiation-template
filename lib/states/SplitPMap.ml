@@ -229,6 +229,9 @@ struct
       | None, d2 -> Delayed.return d2
       | _, _ -> Delayed.vanish ()
     in
+    (* This is not sound, we don't take into account when, eg,
+       ch1 has [i -> x] and sh2 has [i -> y], where we need to compose
+       x • y and check if it's concrete. *)
     let* ch = ExpMap.sym_merge S.compose ch1 ch2 in
     let+ sh = ExpMap.sym_merge S.compose sh1 sh2 in
     (ch, sh, d)
