@@ -281,10 +281,8 @@ struct
         (fun (k, v) -> Expr.is_concrete k && S.is_concrete v)
         sub_entries
     in
-    let* ch' = ExpMap.sym_compose ~matching:false S.compose ch_new ch in
-    let+ sh' =
-      ExpMap.sym_compose ~matching:false S.compose sh_new ExpMap.empty
-    in
+    let* ch' = ExpMap.sym_compose S.compose ch_new ch in
+    let+ sh' = ExpMap.sym_compose S.compose sh_new ExpMap.empty in
     (ch', sh', d)
 
   let lvars (ch, sh, d) =

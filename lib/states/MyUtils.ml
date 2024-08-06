@@ -29,32 +29,17 @@ let pp_bindings ~pp_k ~pp_v iter fmt m =
 module type SymExprMap = sig
   include Prelude.Map.S with type key = Expr.t
 
-  val sym_find_opt :
-    ?matching:bool -> key -> 'a t -> (key * 'a) option Delayed.t
+  val sym_find_opt : key -> 'a t -> (key * 'a) option Delayed.t
 
   val sym_find_default :
-    ?matching:bool ->
-    key ->
-    'a t ->
-    default:(unit -> 'a) ->
-    (key * 'a) Delayed.t
+    key -> 'a t -> default:(unit -> 'a) -> (key * 'a) Delayed.t
 
-  val sym_find_res :
-    ?matching:bool -> key -> 'a t -> err:'b -> (key * 'a, 'b) result Delayed.t
+  val sym_find_res : key -> 'a t -> err:'b -> (key * 'a, 'b) result Delayed.t
 
   val sym_compose :
-    ?matching:bool ->
-    ('a -> 'a -> 'a Delayed.t) ->
-    (Expr.t * 'a) list ->
-    'a t ->
-    'a t Delayed.t
+    ('a -> 'a -> 'a Delayed.t) -> (Expr.t * 'a) list -> 'a t -> 'a t Delayed.t
 
-  val sym_merge :
-    ?matching:bool ->
-    ('a -> 'a -> 'a Delayed.t) ->
-    'a t ->
-    'a t ->
-    'a t Delayed.t
+  val sym_merge : ('a -> 'a -> 'a Delayed.t) -> 'a t -> 'a t -> 'a t Delayed.t
 
   val make_pp :
     (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
@@ -70,10 +55,12 @@ end) : SymExprMap = struct
   module Temp = Prelude.Map.Make (Expr)
   include Temp
 
-  let sym_find_opt ?(matching = true) k m =
+  let sym_find_opt k m =
     match Temp.find_opt k m with
     | Some v -> Delayed.return (Some (k, v)) (* Direct match *)
     | None ->
+        let open Delayed.Syntax in
+        let* { matching; _ } = Delayed.leak_pc_copy () in
         let rec find_match m aux =
           match aux with
           | [] -> Delayed.return None
@@ -98,16 +85,16 @@ end) : SymExprMap = struct
         in
         find_match m (bindings m)
 
-  let sym_find_default ?(matching = true) k m ~default =
+  let sym_find_default k m ~default =
     let open Delayed.Syntax in
-    let* res = sym_find_opt ~matching k m in
+    let* res = sym_find_opt k m in
     match res with
     | Some (k, v) -> Delayed.return (k, v)
     | None -> Delayed.return (k, default ())
 
-  let sym_find_res ?(matching = true) k m ~err =
+  let sym_find_res k m ~err =
     let open Delayed.Syntax in
-    let+ res = sym_find_opt ~matching k m in
+    let+ res = sym_find_opt k m in
     match res with
     | Some (k, v) -> Ok (k, v)
     | None -> Error err
@@ -115,14 +102,13 @@ end) : SymExprMap = struct
   (** Symbolically composes a map with a list of entries, composing entries when they
     are found to match. *)
   let sym_compose
-      ?(matching = true)
       (compose : 'a -> 'a -> 'a Delayed.t)
       (l : (Expr.t * 'a) list)
       (m : 'a t) : 'a t Delayed.t =
     let open Delayed.Syntax in
     let compose_binding m (k, v) =
       let* m = m in
-      let* r = sym_find_opt ~matching k m in
+      let* r = sym_find_opt k m in
       match r with
       | Some (k', v') ->
           let+ v'' = compose v v' in
@@ -131,9 +117,7 @@ end) : SymExprMap = struct
     in
     List.fold_left compose_binding (Delayed.return m) l
 
-  let sym_merge ?(matching = true) compose m1 m2 =
-    sym_compose ~matching compose (bindings m2) m1
-
+  let sym_merge compose m1 m2 = sym_compose compose (bindings m2) m1
   let make_pp pp_v = pp_bindings ~pp_k:Expr.pp ~pp_v iter
 end
 

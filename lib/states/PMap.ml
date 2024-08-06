@@ -304,9 +304,7 @@ struct
       (idx', s')
     in
     let* sub_entries = ExpMap.bindings h |> List.map mapper |> Delayed.all in
-    let+ h' =
-      ExpMap.sym_compose ~matching:false S.compose sub_entries ExpMap.empty
-    in
+    let+ h' = ExpMap.sym_compose S.compose sub_entries ExpMap.empty in
     (h', d)
 
   let lvars (h, d) =
