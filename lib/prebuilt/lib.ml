@@ -67,3 +67,10 @@ module C_Split = struct
   module ExternalSemantics = C.ExternalSemantics
   module InitData = Cgil_lib.Global_env
 end
+
+module Viper = struct
+  module MonadicSMemory = Viper.MonadicSMemory
+  module ParserAndCompiler = Viper.ParserAndCompiler
+  module ExternalSemantics = Viper.ExternalSemantics
+  module InitData = Gillian.General.Init_data.Dummy
+end

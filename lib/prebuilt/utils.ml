@@ -7,8 +7,10 @@ module type IDs = MyUtils.IDs
 module type Injection = Injector.Injection
 module type NameMap = Mapper.NameMap
 module type MyMonadicSMemory = MyMonadicSMemory.S
+module type PMapIndex = PMap.PMapIndex
 
 type filter_mode = Filter.filter_mode
+type index_mode = PMap.index_mode
 
 (* Helpers *)
 module DummyInject = Injector.DummyInject

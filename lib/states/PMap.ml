@@ -293,6 +293,13 @@ struct
 
   let instantiate = function
     | [] -> ((ExpMap.empty, Some (Expr.ESet [])), [])
+    | [ Expr.EList fields ] ->
+        let ss, _ = S.instantiate [] in
+        let h =
+          List.fold_left (fun acc k -> ExpMap.add k ss acc) ExpMap.empty fields
+        in
+        let d = Expr.ESet fields in
+        ((h, Some d), [])
     | _ -> failwith "Invalid arguments for instantiation"
 
   let substitution_in_place sub (h, d) =
