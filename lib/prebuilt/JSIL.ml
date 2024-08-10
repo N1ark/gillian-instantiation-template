@@ -34,7 +34,7 @@ module DeleteActionAddition (S : MyMonadicSMemory) :
   ActionAddition with type t = S.t = struct
   type t = S.t
   type action = Delete
-  type err_t = DeleteNotFullyOwned [@@deriving show, yojson]
+  type err_t = unit [@@deriving show, yojson]
 
   let list_actions () = [ (Delete, [], []) ]
 
@@ -42,21 +42,11 @@ module DeleteActionAddition (S : MyMonadicSMemory) :
     | "delete" -> Some Delete
     | _ -> None
 
-  let action_to_str = function
-    | Delete -> "delete"
-
-  let execute_action a _ _ =
-    match a with
-    | Delete -> Delayed.return (Ok (S.empty (), []))
-
-  let can_fix = function
-    | DeleteNotFullyOwned -> false
-
-  let get_fixes = function
-    | DeleteNotFullyOwned -> []
-
-  let get_recovery_tactic _ = function
-    | DeleteNotFullyOwned -> Gillian.General.Recovery_tactic.none
+  let action_to_str Delete = "delete"
+  let execute_action Delete _ _ = Delayed.return (Ok (S.empty (), []))
+  let can_fix () = false
+  let get_fixes () = []
+  let get_recovery_tactic _ () = Gillian.General.Recovery_tactic.none
 end
 
 (* the "Props" predicate considers its out an in, so it must be removed
