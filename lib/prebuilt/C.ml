@@ -74,10 +74,10 @@ module ExtendMemory (S : C_PMapType) = struct
                 DR.ok (s', []))
       | _ -> failwith "Invalid arguments for mem_move"
 
+    let pred_zero = S.pred_from_str "zeros" |> Option.get
+
     let exec_set_zeros s args =
-      let pred = S.pred_from_str "zeros" in
-      let pred = Option.get pred in
-      let s' = S.produce pred s args in
+      let s' = S.produce pred_zero s args in
       Delayed.map s' (fun s' -> Ok (s', []))
 
     let execute_action = function
