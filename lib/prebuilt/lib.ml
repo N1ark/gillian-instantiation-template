@@ -3,20 +3,17 @@ module WISL_Base = struct
   module ParserAndCompiler = WISL.ParserAndCompiler
   module ExternalSemantics = WISL.ExternalSemantics
   module InitData = Gillian.General.Init_data.Dummy
+  module MyInitData = States.MyMonadicSMemory.DummyID
 end
 
 module WISL_ALoc = struct
+  include WISL_Base
   module MonadicSMemory = WISL.MonadicSMemory_ALoc
-  module ParserAndCompiler = WISL.ParserAndCompiler
-  module ExternalSemantics = WISL.ExternalSemantics
-  module InitData = Gillian.General.Init_data.Dummy
 end
 
 module WISL_Split = struct
+  include WISL_Base
   module MonadicSMemory = WISL.MonadicSMemory_Split
-  module ParserAndCompiler = WISL.ParserAndCompiler
-  module ExternalSemantics = WISL.ExternalSemantics
-  module InitData = Gillian.General.Init_data.Dummy
 end
 
 module JSIL_Base = struct
@@ -24,27 +21,22 @@ module JSIL_Base = struct
   module ParserAndCompiler = JSIL.ParserAndCompiler
   module ExternalSemantics = JSIL.ExternalSemantics
   module InitData = Gillian.General.Init_data.Dummy
+  module MyInitData = States.MyMonadicSMemory.DummyID
 end
 
 module JSIL_ALoc = struct
+  include JSIL_Base
   module MonadicSMemory = JSIL.MonadicSMemory_ALoc
-  module ParserAndCompiler = JSIL.ParserAndCompiler
-  module ExternalSemantics = JSIL.ExternalSemantics
-  module InitData = Gillian.General.Init_data.Dummy
 end
 
 module JSIL_Split = struct
+  include JSIL_Base
   module MonadicSMemory = JSIL.MonadicSMemory_Split
-  module ParserAndCompiler = JSIL.ParserAndCompiler
-  module ExternalSemantics = JSIL.ExternalSemantics
-  module InitData = Gillian.General.Init_data.Dummy
 end
 
 module JSIL_ALocSplit = struct
+  include JSIL_Base
   module MonadicSMemory = JSIL.MonadicSMemory_ALocSplit
-  module ParserAndCompiler = JSIL.ParserAndCompiler
-  module ExternalSemantics = JSIL.ExternalSemantics
-  module InitData = Gillian.General.Init_data.Dummy
 end
 
 module C_Base = struct
@@ -52,20 +44,17 @@ module C_Base = struct
   module ParserAndCompiler = Cgil_lib.CParserAndCompiler
   module ExternalSemantics = C.ExternalSemantics
   module InitData = Cgil_lib.Global_env
+  module MyInitData = C.MyInitData
 end
 
 module C_ALoc = struct
+  include C_Base
   module MonadicSMemory = C.MonadicSMemory_ALoc
-  module ParserAndCompiler = Cgil_lib.CParserAndCompiler
-  module ExternalSemantics = C.ExternalSemantics
-  module InitData = Cgil_lib.Global_env
 end
 
 module C_Split = struct
+  include C_Base
   module MonadicSMemory = C.MonadicSMemory_Split
-  module ParserAndCompiler = Cgil_lib.CParserAndCompiler
-  module ExternalSemantics = C.ExternalSemantics
-  module InitData = Cgil_lib.Global_env
 end
 
 module Viper = struct
@@ -73,4 +62,5 @@ module Viper = struct
   module ParserAndCompiler = Viper.ParserAndCompiler
   module ExternalSemantics = Viper.ExternalSemantics
   module InitData = Gillian.General.Init_data.Dummy
+  module MyInitData = States.MyMonadicSMemory.DummyID
 end

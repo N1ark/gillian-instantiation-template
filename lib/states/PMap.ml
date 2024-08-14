@@ -131,7 +131,6 @@ struct
          (fun (p, ins, outs) -> (SubPred p, "index" :: ins, outs))
          (S.list_preds ())
 
-  let init = S.init
   let empty () : t = (ExpMap.empty, None)
 
   let domain_add k (h, d) =
@@ -287,9 +286,9 @@ struct
     | h, None -> ExpMap.for_all (fun _ s -> S.is_empty s) h
 
   let is_concrete = function
+    | h, None -> ExpMap.for_all (fun _ s -> S.is_concrete s) h
     | h, Some d ->
         Expr.is_concrete d && ExpMap.for_all (fun _ s -> S.is_concrete s) h
-    | h, None -> ExpMap.for_all (fun _ s -> S.is_concrete s) h
 
   let instantiate = function
     | [] -> ((ExpMap.empty, Some (Expr.ESet [])), [])

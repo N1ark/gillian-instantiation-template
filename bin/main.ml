@@ -1,6 +1,5 @@
 open Gillian
 open States
-open Prebuilt.Utils
 
 (* Select prebuilt mode (or build one!) *)
 module Prebuilt = Prebuilt.Lib.C_Base
@@ -17,10 +16,11 @@ module InitData = Prebuilt.InitData
    let () = Debug.print_info ()*)
 
 (* Convert custom memory model -> Gillian memory model *)
-module PatchedMem = MyMonadicSMemory.Make (InitData) (Logger (MyMem))
+module PatchedMem = MyMonadicSMemory.Make (MyMem) (Prebuilt.MyInitData)
 
 (* Gillian Instantiation *)
-module SMemory = Gillian.Monadic.MonadicSMemory.Lift (PatchedMem)
+module SMemory =
+  PerfMeasurer.Make (Gillian.Monadic.MonadicSMemory.Lift (PatchedMem))
 
 module Lifter
     (Verifier : Gillian.Abstraction.Verifier.S

@@ -1180,7 +1180,6 @@ module M = struct
       (Fmt.option ~none:(Fmt.any "EMPTY") Tree.pp)
       root
 
-  let init _ = ()
   let empty () = { bounds = None; root = None }
 
   let is_empty { bounds; root } =

@@ -52,7 +52,6 @@ module Make (S : MyMonadicSMemory.S) :
     (FreedPred, [], [])
     :: List.map (fun (p, ins, outs) -> (SubPred p, ins, outs)) (S.list_preds ())
 
-  let init = S.init
   let empty () : t = None
   let simplify s = if S.is_empty s then None else SubState s
 
@@ -132,7 +131,7 @@ module Make (S : MyMonadicSMemory.S) :
 
   let is_concrete = function
     | SubState s -> S.is_concrete s
-    | Freed -> true (* not sure, doesn't matter *)
+    | Freed -> true
     | None -> true
 
   let instantiate v =

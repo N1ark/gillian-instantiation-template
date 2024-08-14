@@ -89,7 +89,6 @@ struct
          (fun (p, ins, outs) -> (SubPred p, "index" :: ins, outs))
          (S.list_preds ())
 
-  let init = S.init
   let empty () : t = (ExpMap.empty, ExpMap.empty, None)
 
   let domain_add idx (ch, sh, d) =

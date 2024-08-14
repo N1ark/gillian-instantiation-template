@@ -29,7 +29,6 @@ let pred_to_str = function
   | Agree -> "agree"
 
 let list_preds () = [ (Agree, [], [ "value" ]) ]
-let init _ = ()
 let empty () : t = None
 
 let execute_action action s args =
@@ -76,7 +75,7 @@ let is_empty = function
   | Some _ -> false
 
 let is_concrete = function
-  | None -> false
+  | None -> true
   | Some v -> Expr.is_concrete v
 
 let instantiate = function

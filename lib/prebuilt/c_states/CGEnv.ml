@@ -3,6 +3,9 @@ open Gillian.Monadic
 module DR = Delayed_result
 module Global_env = Cgil_lib.Global_env
 
+let init_data = ref Global_env.empty
+let set_init_data d = init_data := d
+
 module M : States.MyMonadicSMemory.S with type t = Global_env.t = struct
   type t = Global_env.t [@@deriving yojson]
   type err_t = unit [@@deriving show, yojson]
@@ -18,13 +21,6 @@ module M : States.MyMonadicSMemory.S with type t = Global_env.t = struct
   let action_to_str GetDef = "getdef"
   let pred_from_str _ = None
   let pred_to_str () = failwith "No pred in GEnv"
-  let init_data = ref Global_env.empty
-
-  let init data =
-    match Global_env.of_yojson data with
-    | Ok g -> init_data := g
-    | Error e -> failwith ("Error when initialising C GEnv: " ^ e)
-
   let empty () = !init_data
 
   (* Execute action *)

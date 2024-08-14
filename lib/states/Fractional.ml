@@ -31,7 +31,6 @@ let pred_to_str = function
   | Frac -> "frac"
 
 let list_preds () = [ (Frac, [ "fraction" ], [ "value" ]) ]
-let init _ = ()
 let empty () : t = None
 
 let execute_action action s args =
@@ -99,7 +98,7 @@ let is_empty = function
   | Some _ -> false
 
 let is_concrete = function
-  | None -> false
+  | None -> true
   | Some (v, q) -> Expr.is_concrete v && Expr.is_concrete q
 
 let instantiate = function

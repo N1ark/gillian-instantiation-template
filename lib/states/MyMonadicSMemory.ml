@@ -22,7 +22,6 @@ module type S = sig
   val pred_to_str : pred -> string
 
   (* Initialisation *)
-  val init : Yojson.Safe.t -> unit
   val empty : unit -> t
 
   (* Execute action *)
@@ -88,8 +87,20 @@ module Defaults = struct
   let mem_constraints _ = []
 end
 
-module Make (ID : Gillian.General.Init_data.S) (Mem : S) :
-  MonadicSMemory.S with type init_data = ID.t = struct
+module type ID = sig
+  type t
+
+  val init : t -> unit
+end
+
+module DummyID : ID with type t = unit = struct
+  type t = unit
+
+  let init () = ()
+end
+
+module Make (Mem : S) (ID : ID) : MonadicSMemory.S with type init_data = ID.t =
+struct
   include Mem
   include Defaults
 
@@ -97,20 +108,16 @@ module Make (ID : Gillian.General.Init_data.S) (Mem : S) :
   type action_ret = (t * vt list, err_t) result
 
   (* Handle init data *)
-
   type init_data = ID.t
 
-  let init_data : init_data option ref = ref None
+  let init_data = ref None
 
-  let init i =
-    init_data := Some i;
-    Mem.init (ID.to_yojson i);
+  let init id =
+    init_data := Some id;
+    ID.init id;
     empty ()
 
-  let get_init_data _ =
-    match !init_data with
-    | Some id -> id
-    | None -> failwith "No init data provided"
+  let get_init_data _ = Option.get !init_data
 
   (* Wrap action / consume / produce with a nice type *)
 

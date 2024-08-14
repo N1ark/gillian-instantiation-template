@@ -80,7 +80,6 @@ module Make (S : MyMonadicSMemory.S) = struct
          (fun (p, ins, outs) -> (SubPred p, "index" :: ins, outs))
          (S.list_preds ())
 
-  let init = S.init
   let empty () : t = (SMap.empty, None)
 
   let get_loc_fast = function

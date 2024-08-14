@@ -45,10 +45,6 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
 
   type err_t = E1 of S1.err_t | E2 of S2.err_t [@@deriving show, yojson]
 
-  let init i =
-    S1.init i;
-    S2.init i
-
   let empty () : t = (S1.empty (), S2.empty ())
 
   let execute_action action (s1, s2) args =

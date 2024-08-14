@@ -53,7 +53,6 @@ module Make (S : MyMonadicSMemory.S) :
          (fun (p, args, ret) -> (SubPred p, "offset" :: args, ret))
          (S.list_preds ())
 
-  let init = S.init
   let empty () : t = (ExpMap.empty, None)
 
   let validate_index (_, n) idx =
@@ -143,7 +142,7 @@ module Make (S : MyMonadicSMemory.S) :
   let is_concrete = function
     | b, None -> ExpMap.for_all (fun _ v -> S.is_concrete v) b
     | b, Some n ->
-        ExpMap.for_all (fun _ v -> S.is_concrete v) b && Expr.is_concrete n
+        Expr.is_concrete n && ExpMap.for_all (fun _ v -> S.is_concrete v) b
 
   let instantiate : Expr.t list -> t * Expr.t list = function
     | n :: args ->
