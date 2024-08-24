@@ -56,11 +56,3 @@ module C_Split = struct
   include C_Base
   module MonadicSMemory = C.MonadicSMemory_Split
 end
-
-module Viper = struct
-  module MonadicSMemory = Viper.MonadicSMemory
-  module ParserAndCompiler = Viper.ParserAndCompiler
-  module ExternalSemantics = Viper.ExternalSemantics
-  module InitData = Gillian.General.Init_data.Dummy
-  module MyInitData = States.MyMonadicSMemory.DummyID
-end
