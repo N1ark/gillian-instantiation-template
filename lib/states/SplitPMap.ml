@@ -99,7 +99,10 @@ struct
 
   let validate_index ((ch, sh, d) : t) idx =
     let open Delayed.Syntax in
-    let* idx' = I.is_valid_index idx in
+    let idxs =
+      (ExpMap.bindings ch |> List.map fst) @ (ExpMap.bindings sh |> List.map fst)
+    in
+    let* idx' = I.is_valid_index idxs idx in
     match idx' with
     | None -> DR.error (InvalidIndexValue idx)
     | Some idx' -> (

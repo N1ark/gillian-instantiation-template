@@ -20,7 +20,7 @@ module type PMapIndex = sig
 
   (** If the given expression is a valid index for the map.
       Returns a possibly simplified index, and None if it's not valid.  *)
-  val is_valid_index : Expr.t -> Expr.t option Delayed.t
+  val is_valid_index : Expr.t list -> Expr.t -> Expr.t option Delayed.t
 
   (** Creates a new address, for allocating new state. Only used in static mode *)
   val make_fresh : unit -> Expr.t
@@ -36,7 +36,7 @@ module LocationIndex : PMapIndex = struct
     let loc = ALoc.alloc () in
     Expr.loc_from_loc_name loc
 
-  let is_valid_index = function
+  let is_valid_index _ = function
     | (Expr.Lit (Loc _) | Expr.ALoc _) as l -> Delayed.return (Some l)
     | e when not (Expr.is_concrete e) -> (
         let open Delayed.Syntax in
@@ -54,10 +54,24 @@ end
 module StringIndex : PMapIndex = struct
   let mode = Dynamic
 
-  let is_valid_index = function
+  let is_valid_index _ = function
     | l -> Delayed.return (Some l)
 
   let make_fresh () = failwith "Invalid in dynamic mode"
+  let default_instantiation = []
+end
+
+module AnythingIndex : PMapIndex = struct
+  let mode = Static
+
+  let is_valid_index is = function
+    | Expr.LVar _ as i ->
+        Delayed.return
+          ~learned:(List.map (fun f -> Formula.Not (Formula.Eq (i, f))) is)
+          (Some i)
+    | i -> Delayed.return (Some i)
+
+  let make_fresh () = Expr.LVar (LVar.alloc ())
   let default_instantiation = []
 end
 
@@ -141,7 +155,8 @@ struct
 
   let validate_index ((h, d) : t) idx =
     let open Delayed.Syntax in
-    let* idx' = I.is_valid_index idx in
+    let idxs = ExpMap.bindings h |> List.map fst in
+    let* idx' = I.is_valid_index idxs idx in
     match idx' with
     | None -> DR.error (InvalidIndexValue idx)
     | Some idx' -> (
