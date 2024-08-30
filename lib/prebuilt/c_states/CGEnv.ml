@@ -43,7 +43,7 @@ module M : States.MyMonadicSMemory.S with type t = Global_env.t = struct
   let consume () _ _ = failwith "Invalid C GEnv consume"
   let produce () _ _ = failwith "Invalid C GEnv produce"
   let compose _ _ = Delayed.vanish () (* TODO *)
-  let is_fully_owned _ _ = Delayed.return false
+  let is_exclusively_owned _ _ = Delayed.return false
   let is_empty _ = false
   let is_concrete _ = false
   let instantiate _ = (Global_env.empty, [])

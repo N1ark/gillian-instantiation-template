@@ -71,8 +71,8 @@ module Make (S : MyMonadicSMemory.S) :
         | Error e -> Error (SubError e))
     | SubAction _, Freed -> DR.error UseAfterFree
     | Free, SubState s ->
-        let* is_fully_owned = S.is_fully_owned s args in
-        if is_fully_owned then DR.ok (Freed, [])
+        let* is_exclusively_owned = S.is_exclusively_owned s args in
+        if is_exclusively_owned then DR.ok (Freed, [])
         else DR.error NotEnoughResourceToFree
     | Free, Freed -> DR.error DoubleFree
     | Free, None -> DR.error NotEnoughResourceToFree
@@ -118,9 +118,9 @@ module Make (S : MyMonadicSMemory.S) :
         SubState s'
     | _ -> Delayed.vanish ()
 
-  let is_fully_owned s e =
+  let is_exclusively_owned s e =
     match s with
-    | SubState s -> S.is_fully_owned s e
+    | SubState s -> S.is_exclusively_owned s e
     | Freed -> Delayed.return true
     | None -> Delayed.return false
 

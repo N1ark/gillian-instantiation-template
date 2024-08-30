@@ -121,7 +121,7 @@ module Make (S : MyMonadicSMemory.S) :
         Delayed.return (b', n)
     | (_, Some _), (_, Some _) -> Delayed.vanish ()
 
-  let is_fully_owned s e =
+  let is_exclusively_owned s e =
     let open Delayed.Syntax in
     match s with
     | b, Some _ ->
@@ -130,7 +130,7 @@ module Make (S : MyMonadicSMemory.S) :
           match (acc, l) with
           | false, _ -> Delayed.return false
           | true, [] -> Delayed.return true
-          | true, (_, hd) :: tl -> check tl (S.is_fully_owned hd e)
+          | true, (_, hd) :: tl -> check tl (S.is_exclusively_owned hd e)
         in
         check (ExpMap.bindings b) (Delayed.return true)
     | _, None -> Delayed.return false

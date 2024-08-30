@@ -238,7 +238,7 @@ struct
     let+ sh = ExpMap.sym_merge S.compose sh1 sh2 in
     (ch, sh, d)
 
-  let is_fully_owned s e =
+  let is_exclusively_owned s e =
     let open Delayed.Syntax in
     match s with
     | ch, sh, Some _ ->
@@ -247,7 +247,7 @@ struct
           match (acc, l) with
           | false, _ -> Delayed.return false
           | true, [] -> Delayed.return true
-          | true, (_, hd) :: tl -> check tl (S.is_fully_owned hd e)
+          | true, (_, hd) :: tl -> check tl (S.is_exclusively_owned hd e)
         in
         Delayed.return true
         |> check (ExpMap.bindings ch)

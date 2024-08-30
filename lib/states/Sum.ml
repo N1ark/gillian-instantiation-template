@@ -122,10 +122,10 @@ module Make (IDs : IDs) (S1 : MyMonadicSMemory.S) (S2 : MyMonadicSMemory.S) :
         S2 s'
     | S1 _, S2 _ | S2 _, S1 _ -> failwith "Sum.compose: mismatched arguments"
 
-  let is_fully_owned s e =
+  let is_exclusively_owned s e =
     match s with
-    | S1 s1 -> S1.is_fully_owned s1 e
-    | S2 s2 -> S2.is_fully_owned s2 e
+    | S1 s1 -> S1.is_exclusively_owned s1 e
+    | S2 s2 -> S2.is_exclusively_owned s2 e
     | None -> Delayed.return true
 
   let is_empty = function

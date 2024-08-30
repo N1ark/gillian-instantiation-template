@@ -88,7 +88,7 @@ let compose (s1 : t) (s2 : t) =
         ~learned:[ v #== v'; (q +. q') #<=. (Expr.num 1.) ]
         (Some (v, q +. q'))
 
-let is_fully_owned s _ =
+let is_exclusively_owned s _ =
   match s with
   | None -> Delayed.return false
   | Some (_, q) -> Delayed.check_sat Formula.Infix.(q #== (Expr.num 1.))

@@ -1641,7 +1641,7 @@ module M = struct
             fmt "Vanishing on compose error: %a" pp_err_t e);
         Delayed.vanish ()
 
-  let is_fully_owned { root; bounds } e =
+  let is_exclusively_owned { root; bounds } e =
     let open Delayed.Syntax in
     match (root, bounds, e) with
     | Some root, Some bounds, [ low; high ] ->

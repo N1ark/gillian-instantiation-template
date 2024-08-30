@@ -202,14 +202,14 @@ module Make (S : MyMonadicSMemory.S) = struct
     in
     (h', d')
 
-  let is_fully_owned s e =
+  let is_exclusively_owned s e =
     let open Delayed.Syntax in
     match s with
     | h, Some _ ->
         SMap.fold
           (fun _ s acc ->
             let* acc = acc in
-            if acc then S.is_fully_owned s e else Delayed.return false)
+            if acc then S.is_exclusively_owned s e else Delayed.return false)
           h (Delayed.return true)
     | _, None -> Delayed.return false
 

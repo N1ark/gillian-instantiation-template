@@ -67,7 +67,7 @@ let compose s1 s2 =
   | None, s | s, None -> Delayed.return s
   | _ -> Delayed.vanish ()
 
-let is_fully_owned s _ =
+let is_exclusively_owned s _ =
   match s with
   | None -> Delayed.return false
   | Some _ -> Delayed.return true
