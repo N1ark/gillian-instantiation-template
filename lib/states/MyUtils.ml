@@ -150,6 +150,9 @@ let get_loc =
       | None ->
           let loc_name = ALoc.alloc () in
           some ~learned:[ Formula.Eq (v, ALoc loc_name) ] loc_name)
+  | e when not (Expr.is_concrete e) ->
+      let loc_name = ALoc.alloc () in
+      some ~learned:[ Formula.Eq (e, ALoc loc_name) ] loc_name
   | _ -> none ()
 
 let bind_vanish_on_err (x : ('a, 'e) result Delayed.t) (f : 'a -> 'b Delayed.t)

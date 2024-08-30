@@ -302,12 +302,9 @@ module Make (S : MyMonadicSMemory.S) = struct
   let assertions_others (h, _) =
     List.concat_map (fun (_, v) -> S.assertions_others v) (SMap.bindings h)
 
-  let get_recovery_tactic (h, _) = function
+  let get_recovery_tactic = function
     | SubError (_, idx, e) ->
-        let idx_s = get_loc_fast idx in
-        let s = SMap.find_opt idx_s h |> Option.value ~default:(S.empty ()) in
-        Gillian.General.Recovery_tactic.merge
-          (S.get_recovery_tactic s e)
+        Gillian.General.Recovery_tactic.merge (S.get_recovery_tactic e)
           (Gillian.General.Recovery_tactic.try_unfold [ idx ])
     | NotAllocated idx | InvalidIndexValue idx ->
         Gillian.General.Recovery_tactic.try_unfold [ idx ]

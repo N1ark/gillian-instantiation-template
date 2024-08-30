@@ -99,7 +99,7 @@ let assertions = function
 
 let assertions_others _ = []
 
-let get_recovery_tactic (_ : t) (e : err_t) : Values.t Recovery_tactic.t =
+let get_recovery_tactic (e : err_t) : Values.t Recovery_tactic.t =
   match e with
   (* | MissingState -> Recovery_tactic.try_unfold ??? *)
   | _ -> Recovery_tactic.none

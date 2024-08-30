@@ -52,12 +52,12 @@ module type S = sig
   (* Fixes *)
   val can_fix : err_t -> bool
   val get_fixes : err_t -> pred MyAsrt.t list list
+  val get_recovery_tactic : err_t -> Expr.t Recovery_tactic.t
 
   (* Helpers *)
   val lvars : t -> Containers.SS.t
   val alocs : t -> Containers.SS.t
   val substitution_in_place : Subst.t -> t -> t Delayed.t
-  val get_recovery_tactic : t -> err_t -> Expr.t Recovery_tactic.t
   val pp : Format.formatter -> t -> unit
 
   (* Debug *)
@@ -169,6 +169,7 @@ struct
   (* Override methods to keep implementations light *)
   let clear _ = empty ()
   let pp_err = pp_err_t
+  let get_recovery_tactic _ = get_recovery_tactic
 
   let pp_c_fix (fmt : Format.formatter) ((p, ins, outs) : c_fix_t) : unit =
     Format.fprintf fmt "<%s>(%a;%a)" (pred_to_str p)
