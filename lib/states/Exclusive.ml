@@ -55,12 +55,8 @@ let produce core_pred s args =
   | PointsTo, Some _, _ -> Delayed.vanish ()
   | PointsTo, _, _ -> failwith "Invalid PointsTo produce"
 
-let substitution_in_place subst (heap : t) =
-  match heap with
-  | None -> Delayed.return None
-  | Some v ->
-      let v' = Subst.subst_in_expr ~partial:true subst v in
-      Delayed.return (Some v')
+let substitution_in_place subst s =
+  Option.map (Subst.subst_in_expr ~partial:true subst) s |> Delayed.return
 
 let compose s1 s2 =
   match (s1, s2) with

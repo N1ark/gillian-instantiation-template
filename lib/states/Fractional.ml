@@ -75,7 +75,8 @@ let substitution_in_place subst s =
   | None -> Delayed.return None
   | Some (v, q) ->
       let v' = Subst.subst_in_expr ~partial:true subst v in
-      Delayed.return (Some (v', q))
+      let q' = Subst.subst_in_expr ~partial:true subst q in
+      Delayed.return (Some (v', q'))
 
 let compose (s1 : t) (s2 : t) =
   let open Formula.Infix in
