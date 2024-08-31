@@ -87,10 +87,10 @@ end) : SymExprMap = struct
 
   let sym_find_default k m ~default =
     let open Delayed.Syntax in
-    let* res = sym_find_opt k m in
+    let+ res = sym_find_opt k m in
     match res with
-    | Some (k, v) -> Delayed.return (k, v)
-    | None -> Delayed.return (k, default ())
+    | Some (k, v) -> (k, v)
+    | None -> (k, default ())
 
   let sym_find_res k m ~err =
     let open Delayed.Syntax in

@@ -2,7 +2,7 @@ open Gillian
 open States
 
 (* Select prebuilt mode (or build one!) *)
-module Prebuilt = Prebuilt.Lib.C_Base
+module Prebuilt = Prebuilt.Lib.JSIL_ALoc
 
 (* get modules *)
 module MyMem = Prebuilt.MonadicSMemory
