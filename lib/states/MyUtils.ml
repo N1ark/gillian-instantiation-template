@@ -61,29 +61,28 @@ end) : SymExprMap = struct
     | None ->
         let open Delayed.Syntax in
         let* { matching; _ } = Delayed.leak_pc_copy () in
-        let rec find_match m aux =
-          match aux with
+        let rec find_match = function
           | [] -> Delayed.return None
           | (k', v) :: tl -> (
               match (k, k') with
               (* THIS IS ONLY TRUE IF WE'RE NOT MATCHING ! *)
               | Expr.ALoc l1, Expr.ALoc l2 when not matching ->
                   if String.equal l1 l2 then Delayed.return (Some (k', v))
-                  else find_match m tl
+                  else find_match tl
               (* This is already done by the #==, but putting it here speeds it up a tiny bit :) *)
               | Expr.Lit (Loc l1), Expr.Lit (Loc l2)
               | Expr.Lit (String l1), Expr.Lit (String l2) ->
                   if String.equal l1 l2 then Delayed.return (Some (k', v))
-                  else find_match m tl
+                  else find_match tl
               | Expr.ALoc l1, Expr.ALoc l2 when matching && String.equal l1 l2
                 -> Delayed.return (Some (k', v))
               | _ ->
                   Check.check
                     Formula.Infix.(k' #== k)
                     ~then_:(fun () -> Delayed.return (Some (k', v)))
-                    ~else_:(fun () -> find_match m tl))
+                    ~else_:(fun () -> find_match tl))
         in
-        find_match m (bindings m)
+        find_match (bindings m)
 
   let sym_find_default k m ~default =
     let open Delayed.Syntax in
