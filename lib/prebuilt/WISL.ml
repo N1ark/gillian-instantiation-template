@@ -12,35 +12,11 @@ module ExclusiveNull = struct
     | _ -> failwith "ExclusiveNull: instantiate: too many arguments"
 end
 
-module MemoryChunk = MList (ExclusiveNull)
-
-module ListIndexRetInjection : Injection with type t = MemoryChunk.t = struct
-  include DummyInject (MemoryChunk)
-
-  let post_execute_action _ (s, args, rets) =
-    let rets' =
-      match (args, rets) with
-      | _, ([] as rets) | [], rets -> rets
-      | idx :: _, rets -> idx :: rets
-    in
-    Delayed.return (s, args, rets')
-
-  (* Requires returning first index in list on instantiation (0) *)
-  let post_instantiate (s, rets) = (s, Expr.zero_i :: rets)
-end
-
-module BaseMemory =
-  PMap
-    (LocationIndex)
-    (Freeable (Injector (ListIndexRetInjection) (MemoryChunk)))
-
-module ALocMemory =
-  ALocPMap (Freeable (Injector (ListIndexRetInjection) (MemoryChunk)))
+module BaseMemory = PMap (LocationIndex) (Freeable (MList (ExclusiveNull)))
+module ALocMemory = ALocPMap (Freeable (MList (ExclusiveNull)))
 
 module SplitMemory =
-  SplitPMap
-    (LocationIndex)
-    (Freeable (Injector (ListIndexRetInjection) (MemoryChunk)))
+  SplitPMap (LocationIndex) (Freeable (MList (ExclusiveNull)))
 
 module WISLSubst : NameMap = struct
   let action_substitutions =

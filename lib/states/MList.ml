@@ -55,14 +55,18 @@ module Make (S : MyMonadicSMemory.S) :
 
   let empty () : t = (ExpMap.empty, None)
 
-  let validate_index (_, n) idx =
+  let validate_index ((b, n) : t) idx =
     let open Delayed.Syntax in
-    let* idx = Delayed.reduce idx in
-    match n with
-    | Some n ->
-        if%sat Formula.Infix.(Expr.zero_i #<= idx #&& (idx #< n)) then DR.ok ()
-        else DR.error (OutOfBounds (idx, n))
-    | None -> DR.ok ()
+    let* res = ExpMap.sym_find_opt idx b in
+    match res with
+    | Some (idx', ss) -> DR.ok (idx', ss)
+    | None -> (
+        match n with
+        | Some n ->
+            if%sat Formula.Infix.(Expr.zero_i #<= idx #&& (idx #< n)) then
+              DR.ok (idx, S.empty ())
+            else DR.error (OutOfBounds (idx, n))
+        | None -> DR.ok (idx, S.empty ()))
 
   let execute_action action ((b, n) : t) (args : Values.t list) :
       (t * Values.t list, err_t) DR.t =
@@ -70,12 +74,11 @@ module Make (S : MyMonadicSMemory.S) :
     let open Delayed.Syntax in
     match (action, args) with
     | SubAction a, idx :: args -> (
-        let** () = validate_index (b, n) idx in
-        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
-        let+ r = S.execute_action a s args in
+        let** idx', ss = validate_index (b, n) idx in
+        let+ r = S.execute_action a ss args in
         match r with
-        | Ok (s', v) -> Ok ((ExpMap.add idx s' b, n), v)
-        | Error e -> Error (SubError (idx, e)))
+        | Ok (ss', v) -> Ok ((ExpMap.add idx' ss' b, n), idx' :: v)
+        | Error e -> Error (SubError (idx', e)))
     | SubAction _, [] -> failwith "Missing index for sub-action"
 
   let consume pred (b, n) ins =
@@ -83,13 +86,13 @@ module Make (S : MyMonadicSMemory.S) :
     let open Delayed.Syntax in
     match (pred, ins) with
     | SubPred p, idx :: ins -> (
-        let** () = validate_index (b, n) idx in
-        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
-        let+ r = S.consume p s ins in
+        let** idx', ss = validate_index (b, n) idx in
+        let+ r = S.consume p ss ins in
         match r with
-        | Ok (s, outs) when S.is_empty s -> Ok ((ExpMap.remove idx b, n), outs)
-        | Ok (s, outs) -> Ok ((ExpMap.add idx s b, n), outs)
-        | Error e -> Error (SubError (idx, e)))
+        | Ok (ss', outs) when S.is_empty ss' ->
+            Ok ((ExpMap.remove idx' b, n), outs)
+        | Ok (ss', outs) -> Ok ((ExpMap.add idx' ss' b, n), outs)
+        | Error e -> Error (SubError (idx', e)))
     | SubPred _, [] -> failwith "Missing index for sub-predicate consume"
     | Length, [] -> (
         match n with
@@ -102,10 +105,9 @@ module Make (S : MyMonadicSMemory.S) :
     let open MyUtils.Syntax in
     match (pred, args) with
     | SubPred p, idx :: args ->
-        let*? _ = validate_index (b, n) idx in
-        let* idx, s = ExpMap.sym_find_default idx b ~default:S.empty in
-        let* s' = S.produce p s args in
-        Delayed.return (ExpMap.add idx s' b, n)
+        let*? idx', ss = validate_index (b, n) idx in
+        let* ss' = S.produce p ss args in
+        Delayed.return (ExpMap.add idx' ss' b, n)
     | SubPred _, [] -> failwith "Missing index for sub-predicate produce"
     | Length, [ n' ] -> (
         match n with
@@ -157,7 +159,7 @@ module Make (S : MyMonadicSMemory.S) :
             aux (ExpMap.add (Expr.int i) (fst (S.instantiate args)) acc) (i + 1)
         in
         let b = aux ExpMap.empty 0 in
-        ((b, Some n), [])
+        ((b, Some n), [ Expr.zero_i ])
     | [] -> failwith "Invalid arguments for list instantiation"
 
   let substitution_in_place sub (b, n) =

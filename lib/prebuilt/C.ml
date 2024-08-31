@@ -57,7 +57,6 @@ module ExtendMemory (S : C_PMapType) = struct
             let**^ _, src = S.validate_index s src_loc in
             let**^ dst_loc', dest = S.validate_index s dst_loc in
             match (src, dest) with
-            (* TODO: proper miss errors here *)
             | States.Freeable.None, _ | _, States.Freeable.None ->
                 DR.error MoveOnMissing
             | States.Freeable.Freed, _ | _, States.Freeable.Freed ->
