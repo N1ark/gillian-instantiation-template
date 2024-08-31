@@ -1,14 +1,8 @@
 # gillian-instantiation-template
-Template for an instantiation of Gillian
 
-Start by implementing cmemory.ml, and then the ParserAndCompiler interface.
+A library of composable state models for [Gillian](https://gillianplatform.github.io/sphinx/index.html).
 
-Run help using
-```sh
-esy x instantiation --help
-```
-
-Run the simple wpst example using
-```sh
-esy x instantiation wpst tests/simple.gil -a
-```
+Directories:
+- `/bin/` contains the entrypoint to the verification CLI. This is where you can combine and then use your state models.
+- `/lib/prebuilt/` some prebuilt instantiations for Gillian, using the state model library. Includes JS, C and WISL.
+- `/lib/states/` the library of states one can use to build their own state models.

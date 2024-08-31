@@ -68,9 +68,7 @@ let is_exclusively_owned s _ =
   | None -> Delayed.return false
   | Some _ -> Delayed.return true
 
-let is_empty = function
-  | None -> true
-  | Some _ -> false
+let is_empty = Option.is_none
 
 let is_concrete = function
   | None -> true
@@ -95,12 +93,7 @@ let assertions = function
 
 let assertions_others _ = []
 let get_recovery_tactic _ = Recovery_tactic.none
+let can_fix MissingState = true
 
-let can_fix = function
-  | MissingState -> true
-
-let get_fixes = function
-  | MissingState ->
-      [
-        [ MyAsrt.CorePred (PointsTo, [], [ LVar (Generators.fresh_svar ()) ]) ];
-      ]
+let get_fixes MissingState =
+  [ [ MyAsrt.CorePred (PointsTo, [], [ LVar (Generators.fresh_svar ()) ]) ] ]
