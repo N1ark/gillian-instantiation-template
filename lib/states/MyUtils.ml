@@ -139,19 +139,17 @@ extending the path condition. Returns None if the input can definitely not be a 
 let get_loc =
   let open Delayed.Syntax in
   let open Delayed_option in
+  let open Formula.Infix in
   function
   | Expr.Lit (Loc loc) -> some loc
   | Expr.ALoc loc -> some loc
-  | Expr.LVar _ as v -> (
-      let* loc = Delayed.resolve_loc v in
+  | e when not (Expr.is_concrete e) -> (
+      let* loc = Delayed.resolve_loc e in
       match loc with
       | Some loc -> some loc
       | None ->
           let loc_name = ALoc.alloc () in
-          some ~learned:[ Formula.Eq (v, ALoc loc_name) ] loc_name)
-  | e when not (Expr.is_concrete e) ->
-      let loc_name = ALoc.alloc () in
-      some ~learned:[ Formula.Eq (e, ALoc loc_name) ] loc_name
+          some ~learned:[ e #== (ALoc loc_name) ] loc_name)
   | _ -> none ()
 
 let bind_vanish_on_err (x : ('a, 'e) result Delayed.t) (f : 'a -> 'b Delayed.t)

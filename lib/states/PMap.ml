@@ -36,17 +36,8 @@ module LocationIndex : PMapIndex = struct
     let loc = ALoc.alloc () in
     Expr.loc_from_loc_name loc
 
-  let is_valid_index = function
-    | (Expr.Lit (Loc _) | Expr.ALoc _) as l -> Delayed.return (Some l)
-    | e when not (Expr.is_concrete e) -> (
-        let open Delayed.Syntax in
-        let* loc = Delayed.resolve_loc e in
-        match loc with
-        | Some l -> Delayed.return (Some (Expr.loc_from_loc_name l))
-        | None ->
-            let loc' = make_fresh () in
-            Delayed.return ~learned:[ Formula.Infix.(loc' #== e) ] (Some loc'))
-    | _ -> Delayed.return None
+  let is_valid_index e =
+    Delayed_option.map (MyUtils.get_loc e) Expr.loc_from_loc_name
 
   let default_instantiation = []
 end
@@ -334,7 +325,7 @@ struct
   let lift_corepred k (p, i, o) = (SubPred p, k :: i, o)
 
   let assertions (h, d) =
-    let folder k s acc = (List.map (lift_corepred k)) (S.assertions s) @ acc in
+    let folder k s acc = (List.map @@ lift_corepred k) (S.assertions s) @ acc in
     let sub_assrts = ExpMap.fold folder h [] in
     match d with
     | None -> sub_assrts
