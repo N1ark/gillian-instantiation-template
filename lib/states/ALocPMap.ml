@@ -118,6 +118,18 @@ module Make (S : MyMonadicSMemory.S) = struct
         | None, Some _ -> DR.error (NotAllocated idx_e))
     | None -> DR.error (InvalidIndexValue idx)
 
+  (*
+  Uncomment to allow PMap performance measurements
+  let validate_index ((h, _) as s) i =
+    let open Delayed.Syntax in
+    let* () = Delayed.return () in
+    let now = Unix.gettimeofday () in
+    let+ r = validate_index s i in
+    let later = Unix.gettimeofday () in
+    let size = SMap.cardinal h in
+    Printf.printf "validate_index: %f (%i) (aloc-str)\n" (later -. now) size;
+    r*)
+
   (* ignore the 2nd parameter, but keep it for signature parity with PMap/SplitPMap *)
   let update_entry (h, d) _ idx s =
     let idx_s = get_loc_fast idx in

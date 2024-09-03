@@ -149,6 +149,19 @@ struct
             if%sat Formula.SetMem (idx', d) then DR.ok (idx', S.empty ())
             else DR.error (NotAllocated idx'))
 
+  (*
+  Uncomment to allow PMap performance measurements
+  let validate_index ((h, _) as s) i =
+    let open Delayed.Syntax in
+    let name = if I.mode = Dynamic then "unopti" else "aloc" in
+    let* () = Delayed.return () in
+    let now = Unix.gettimeofday () in
+    let+ r = validate_index s i in
+    let later = Unix.gettimeofday () in
+    let size = ExpMap.cardinal h in
+    Printf.printf "validate_index: %f (%i) (%s)\n" (later -. now) size name;
+    r*)
+
   let update_entry (h, d) idx idx' s =
     if S.is_empty s then (ExpMap.remove idx h, d)
     else if Expr.equal idx idx' then (ExpMap.add idx s h, d)
