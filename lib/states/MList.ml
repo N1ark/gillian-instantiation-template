@@ -164,22 +164,22 @@ module Make (S : MyMonadicSMemory.S) :
 
   let substitution_in_place sub (b, n) =
     let open Delayed.Syntax in
+    let subst = Subst.subst_in_expr sub ~partial:true in
     let mapper (idx, s) =
       let+ s' = S.substitution_in_place sub s in
-      let idx' = Subst.subst_in_expr sub idx ~partial:true in
+      let idx' = subst idx in
       (idx', s')
     in
-    let map_entries = ExpMap.bindings b in
-    let* sub_entries = Delayed.all (List.map mapper map_entries) in
+    let* sub_entries = ExpMap.bindings b |> List.map mapper |> Delayed.all in
     let+ b' = ExpMap.sym_compose S.compose sub_entries ExpMap.empty in
-    let n' = Option.map (Subst.subst_in_expr sub ~partial:true) n in
+    let n' = Option.map subst n in
     (b', n')
 
   let lvars (b, n) =
     let open Containers.SS in
     let lvars_map =
       ExpMap.fold
-        (fun k v acc -> union (union (Expr.lvars k) (S.lvars v)) acc)
+        (fun k v acc -> S.lvars v |> union (Expr.lvars k) |> union acc)
         b empty
     in
     match n with

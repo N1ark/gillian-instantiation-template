@@ -320,7 +320,9 @@ struct
   let lvars (h, d) =
     let open Containers.SS in
     let lvars_map =
-      ExpMap.fold (fun _ s acc -> union acc (S.lvars s)) h empty
+      ExpMap.fold
+        (fun k s acc -> S.lvars s |> union (Expr.lvars k) |> union acc)
+        h empty
     in
     match d with
     | None -> lvars_map
