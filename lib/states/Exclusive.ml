@@ -8,7 +8,7 @@ module Recovery_tactic = Gillian.General.Recovery_tactic
 type t = Expr.t option [@@deriving show, yojson]
 type err_t = MissingState [@@deriving show, yojson]
 type action = Load | Store
-type pred = PointsTo
+type pred = Ex
 
 let pp = Fmt.(option ~none:(any "None") Expr.pp)
 
@@ -24,13 +24,13 @@ let action_to_str = function
 let list_actions () = [ (Load, [], [ "value" ]); (Store, [ "value" ], []) ]
 
 let pred_from_str = function
-  | "points_to" -> Some PointsTo
+  | "ex" -> Some Ex
   | _ -> None
 
 let pred_to_str = function
-  | PointsTo -> "points_to"
+  | Ex -> "ex"
 
-let list_preds () = [ (PointsTo, [], [ "value" ]) ]
+let list_preds () = [ (Ex, [], [ "value" ]) ]
 let empty () : t = None
 
 let execute_action action s args =
@@ -45,15 +45,15 @@ let execute_action action s args =
 
 let consume core_pred s args =
   match (core_pred, s, args) with
-  | PointsTo, Some v, [] -> DR.ok (None, [ v ])
-  | PointsTo, None, _ -> DR.error MissingState
-  | PointsTo, _, _ -> failwith "Invalid PointsTo consume"
+  | Ex, Some v, [] -> DR.ok (None, [ v ])
+  | Ex, None, _ -> DR.error MissingState
+  | Ex, _, _ -> failwith "Invalid PointsTo consume"
 
 let produce core_pred s args =
   match (core_pred, s, args) with
-  | PointsTo, None, [ v ] -> Delayed.return (Some v)
-  | PointsTo, Some _, _ -> Delayed.vanish ()
-  | PointsTo, _, _ -> failwith "Invalid PointsTo produce"
+  | Ex, None, [ v ] -> Delayed.return (Some v)
+  | Ex, Some _, _ -> Delayed.vanish ()
+  | Ex, _, _ -> failwith "Invalid PointsTo produce"
 
 let substitution_in_place subst s =
   Option.map (Subst.subst_in_expr ~partial:true subst) s |> Delayed.return
@@ -89,11 +89,11 @@ let alocs = function
 
 let assertions = function
   | None -> []
-  | Some v -> [ (PointsTo, [], [ v ]) ]
+  | Some v -> [ (Ex, [], [ v ]) ]
 
 let assertions_others _ = []
 let get_recovery_tactic _ = Recovery_tactic.none
 let can_fix MissingState = true
 
 let get_fixes MissingState =
-  [ [ MyAsrt.CorePred (PointsTo, [], [ LVar (Generators.fresh_svar ()) ]) ] ]
+  [ [ MyAsrt.CorePred (Ex, [], [ LVar (Generators.fresh_svar ()) ]) ] ]

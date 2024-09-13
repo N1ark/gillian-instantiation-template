@@ -1,8 +1,8 @@
 (* Sum (IDs) (Exclusive) (Fractional) *)
 
 spec test_left_load()
-  [[ <left_points_to>(;#x) ]]
-  [[ (ret == {{ #x }}) * <left_points_to>(;#x) ]]
+  [[ <left_ex>(;#x) ]]
+  [[ (ret == {{ #x }}) * <left_ex>(;#x) ]]
   normal
 proc test_left_load() {
   x := [left_load]();
@@ -12,8 +12,8 @@ proc test_left_load() {
 
 
 spec test_left_store(x)
-  [[ (x == #x) * <left_points_to>(;#any) ]]
-  [[ (ret == null) * <left_points_to>(;#x) ]]
+  [[ (x == #x) * <left_ex>(;#any) ]]
+  [[ (ret == null) * <left_ex>(;#x) ]]
   normal
 proc test_left_store(x) {
   x := [left_store](x);

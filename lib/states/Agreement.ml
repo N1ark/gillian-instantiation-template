@@ -8,7 +8,7 @@ module Recovery_tactic = Gillian.General.Recovery_tactic
 type t = Expr.t option [@@deriving yojson]
 type err_t = MissingState [@@deriving show, yojson]
 type action = Load
-type pred = Agree
+type pred = Ag
 
 let pp = Fmt.(option ~none:(any "None") Expr.pp)
 
@@ -22,13 +22,13 @@ let action_to_str = function
 let list_actions () = [ (Load, [], [ "value" ]) ]
 
 let pred_from_str = function
-  | "agree" -> Some Agree
+  | "ag" -> Some Ag
   | _ -> None
 
 let pred_to_str = function
-  | Agree -> "agree"
+  | Ag -> "ag"
 
-let list_preds () = [ (Agree, [], [ "value" ]) ]
+let list_preds () = [ (Ag, [], [ "value" ]) ]
 let empty () : t = None
 
 let execute_action action s args =
@@ -39,16 +39,16 @@ let execute_action action s args =
 
 let consume core_pred s args =
   match (core_pred, s, args) with
-  | Agree, Some v, [] -> DR.ok (Some v, [ v ])
-  | Agree, None, _ -> DR.error MissingState
-  | Agree, _, _ -> failwith "Invalid Agree consume"
+  | Ag, Some v, [] -> DR.ok (Some v, [ v ])
+  | Ag, None, _ -> DR.error MissingState
+  | Ag, _, _ -> failwith "Invalid Agree consume"
 
 let produce core_pred s args =
   let open Formula.Infix in
   match (core_pred, s, args) with
-  | Agree, None, [ v' ] -> Delayed.return (Some v')
-  | Agree, Some v, [ v' ] -> Delayed.return ~learned:[ v #== v' ] (Some v)
-  | Agree, _, _ ->
+  | Ag, None, [ v' ] -> Delayed.return (Some v')
+  | Ag, Some v, [ v' ] -> Delayed.return ~learned:[ v #== v' ] (Some v)
+  | Ag, _, _ ->
       failwith
         (Fmt.str "Invalid Agree produce, got args [%a]"
            (Fmt.list ~sep:Fmt.comma Expr.pp)
@@ -91,7 +91,7 @@ let alocs = function
 
 let assertions = function
   | None -> []
-  | Some v -> [ (Agree, [], [ v ]) ]
+  | Some v -> [ (Ag, [], [ v ]) ]
 
 let assertions_others _ = []
 
@@ -105,4 +105,4 @@ let can_fix = function
 
 let get_fixes = function
   | MissingState ->
-      [ [ MyAsrt.CorePred (Agree, [], [ LVar (Generators.fresh_svar ()) ]) ] ]
+      [ [ MyAsrt.CorePred (Ag, [], [ LVar (Generators.fresh_svar ()) ]) ] ]

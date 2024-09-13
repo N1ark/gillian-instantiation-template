@@ -5,7 +5,7 @@ spec test_js()
   [[
     (ret == #obj2)
 
-    * <left_points_to>(#obj2, "pointer" ; #obj1)
+    * <left_ex>(#obj2, "pointer" ; #obj1)
     * <left_domainset>(#obj2 ; -{ "pointer" }-)
     * <right_domainset>(#obj2 ; -{}-)
 
@@ -31,17 +31,17 @@ spec test_js_bigger()
   [[
     (ret == #obj2)
 
-    * <left_points_to>(#obj2, "pointer" ; #obj1)
-    * <left_points_to>(#obj2, "date" ; {{ #v1, #v2, #v3 }})
+    * <left_ex>(#obj2, "pointer" ; #obj1)
+    * <left_ex>(#obj2, "date" ; {{ #v1, #v2, #v3 }})
     * <left_domainset>(#obj2 ; -{ "pointer", "date" }-)
     * <right_domainset>(#obj2 ; -{}-)
 
-    * <left_points_to>(#obj1, "state-model" ; "javascript")
-    * <left_points_to>(#obj1, "author" ; "opale")
+    * <left_ex>(#obj1, "state-model" ; "javascript")
+    * <left_ex>(#obj1, "author" ; "opale")
     * <left_domainset>(#obj1 ; -{ "state-model", "author" }-)
-    * <right_agree>(#obj1, #v1 ; 9i)
-    * <right_agree>(#obj1, #v2 ; 5i)
-    * <right_agree>(#obj1, #v3 ; 2024i)
+    * <right_ag>(#obj1, #v1 ; 9i)
+    * <right_ag>(#obj1, #v2 ; 5i)
+    * <right_ag>(#obj1, #v3 ; 2024i)
     * <right_domainset>(#obj1 ; -{ #v1, #v2, #v3 }-)
    ]]
   normal

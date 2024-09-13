@@ -22,6 +22,7 @@ end
 
 (* Indices *)
 module LocationIndex = PMap.LocationIndex
+module IntegerIndex = PMap.IntegerIndex
 module StringIndex = PMap.StringIndex
 
 (* Leaves *)

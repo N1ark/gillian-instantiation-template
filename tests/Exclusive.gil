@@ -1,8 +1,8 @@
 (* Exclusive *)
 
 spec test_store(x)
-  [[ (x == #x) * <points_to>(;#any) ]]
-  [[ (ret == null) * <points_to>(;#x) ]]
+  [[ (x == #x) * <ex>(;#any) ]]
+  [[ (ret == null) * <ex>(;#x) ]]
   normal
 proc test_store(x) {
   e := [store](x);
@@ -21,8 +21,8 @@ proc test_invalid_store(x) {
 };
 
 spec test_load()
-  [[ (<points_to>(;#any)) ]]
-  [[ (ret == {{ #any }}) * <points_to>(;#any) ]]
+  [[ (<ex>(;#any)) ]]
+  [[ (ret == {{ #any }}) * <ex>(;#any) ]]
   normal
 proc test_load() {
   x := [load]();
@@ -31,7 +31,7 @@ proc test_load() {
 };
 
 spec test_load_drop()
-  [[ (<points_to>(;#any)) ]]
+  [[ (<ex>(;#any)) ]]
   [[ (ret == {{ #any }}) ]]
   normal
 proc test_load_drop() {
@@ -41,8 +41,8 @@ proc test_load_drop() {
 };
 
 spec test_invalid_load()
-  [[ (<points_to>(;#any)) ]]
-  [[ (ret == {{ #any }}) * (<points_to>(;#any)) * (<points_to>(;#any)) ]]
+  [[ (<ex>(;#any)) ]]
+  [[ (ret == {{ #any }}) * (<ex>(;#any)) * (<ex>(;#any)) ]]
   normal
 proc test_invalid_load() {
   x := [load]();

@@ -1,8 +1,8 @@
 (* MList (Exclusive) *)
 
 spec test_store(x)
-  [[ (x == #x) * <length>(;1i) * <points_to>(0i;#any) ]]
-  [[ (ret == null) * <length>(;1i) * <points_to>(0i;#x) ]]
+  [[ (x == #x) * <length>(;1i) * <ex>(0i;#any) ]]
+  [[ (ret == null) * <length>(;1i) * <ex>(0i;#x) ]]
   normal
 proc test_store(x) {
   e := [store](0i, x);
@@ -13,9 +13,9 @@ proc test_store(x) {
 
 spec test_store_range(x, i)
   [[ (x == #x) * (i == #i) * (0i i<=# #i) * (#i i<# 3i) * <length>(;3i)
-    * <points_to>(0i;#a)* <points_to>(1i;#b) * <points_to>(2i;#c) ]]
+    * <ex>(0i;#a)* <ex>(1i;#b) * <ex>(2i;#c) ]]
   [[ (ret == null) * <length>(;3i)
-    * <points_to>(0i;#d) * <points_to>(1i;#e) * <points_to>(2i;#f)
+    * <ex>(0i;#d) * <ex>(1i;#e) * <ex>(2i;#f)
     * ((#d == #x) \/ (#e == #x) \/ (#f == #x)) ]]
   normal
 proc test_store_range(x, i) {
@@ -25,8 +25,8 @@ proc test_store_range(x, i) {
 };
 
 spec test_store_no_length(x)
-  [[ (x == #x) * <points_to>(11i;#b) ]]
-  [[ (ret == null) * <points_to>(11i;#x) ]]
+  [[ (x == #x) * <ex>(11i;#b) ]]
+  [[ (ret == null) * <ex>(11i;#x) ]]
   normal
 proc test_store_no_length(x) {
   e := [store](11i, x);
@@ -35,8 +35,8 @@ proc test_store_no_length(x) {
 };
 
 spec test_invalid_out_of_bound_store(x)
-  [[ (x == #x) * <length>(;1i) * <points_to>(0i;#any) ]]
-  [[ (ret == null) * <length>(;1i) * <points_to>(0i;#any) ]]
+  [[ (x == #x) * <length>(;1i) * <ex>(0i;#any) ]]
+  [[ (ret == null) * <length>(;1i) * <ex>(0i;#any) ]]
   normal
 proc test_invalid_out_of_bound_store(x) {
   e := [store](1i, x);
@@ -55,8 +55,8 @@ proc test_invalid_store_missing_resource(x) {
 };
 
 spec test_load()
-  [[ <points_to>(0i;#any) * <length>(;1i) ]]
-  [[ (ret == {{ #any }}) * <points_to>(0i;#any) * <length>(;1i) ]]
+  [[ <ex>(0i;#any) * <length>(;1i) ]]
+  [[ (ret == {{ #any }}) * <ex>(0i;#any) * <length>(;1i) ]]
   normal
 proc test_load() {
   x := [load](0i);
@@ -65,8 +65,8 @@ proc test_load() {
 };
 
 spec test_invalid_out_of_bound_load()
-  [[ <points_to>(0i;#any) * <length>(;1i) ]]
-  [[ (ret == null) * <points_to>(0i;#any) * <length>(;1i) ]]
+  [[ <ex>(0i;#any) * <length>(;1i) ]]
+  [[ (ret == null) * <ex>(0i;#any) * <length>(;1i) ]]
   normal
 proc test_invalid_out_of_bound_load() {
   x := [load](2i);

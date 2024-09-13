@@ -1,8 +1,8 @@
 (* Agreement *)
 
 spec test_load()
-  [[ (<agree>(;#any)) ]]
-  [[ (ret == {{ #any }}) * <agree>(;#any) ]]
+  [[ (<ag>(;#any)) ]]
+  [[ (ret == {{ #any }}) * <ag>(;#any) ]]
   normal
 proc test_load() {
   x := [load]();
@@ -11,8 +11,8 @@ proc test_load() {
 };
 
 spec test_agree_duplication()
-  [[ (<agree>(;#any)) ]]
-  [[ (ret == null) * <agree>(;#any) * <agree>(;#any) ]]
+  [[ (<ag>(;#any)) ]]
+  [[ (ret == null) * <ag>(;#any) * <ag>(;#any) ]]
   normal
 proc test_agree_duplication() {
   ret := null;
@@ -20,8 +20,8 @@ proc test_agree_duplication() {
 };
 
 spec test_agree_equality(a)
-  [[ (a == #a) * <agree>(;#a) * <agree>(;#b) ]]
-  [[ (ret == null) * <agree>(;#a) * <agree>(;#b) * (#a == #b) ]]
+  [[ (a == #a) * <ag>(;#a) * <ag>(;#b) ]]
+  [[ (ret == null) * <ag>(;#a) * <ag>(;#b) * (#a == #b) ]]
   normal
 proc test_agree_equality(a) {
   ret := null;

@@ -28,7 +28,7 @@ module WISLSubst : NameMap = struct
     ]
 
   let pred_substitutions =
-    [ ("cell", "points_to"); ("freed", "freed"); ("bound", "length") ]
+    [ ("cell", "ex"); ("freed", "freed"); ("bound", "length") ]
 end
 
 (* Actual Exports *)

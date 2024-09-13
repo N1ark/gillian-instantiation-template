@@ -6,7 +6,7 @@ module DR = Delayed_result
 module Recovery_tactic = Gillian.General.Recovery_tactic
 
 module type S = sig
-  (* Type of GIL general states *)
+  (* Type of states *)
   type t [@@deriving yojson]
 
   (* Helper types *)
@@ -17,7 +17,7 @@ module type S = sig
   type pred
 
   val action_from_str : string -> action option
-  val action_to_str : action -> string (* only needed for debug *)
+  val action_to_str : action -> string
   val pred_from_str : string -> pred option
   val pred_to_str : pred -> string
 

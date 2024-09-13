@@ -1,8 +1,8 @@
 (* PMap (StringIndex) (Exclusive) *)
 
 spec test_store(x)
-  [[ (x == #x) * <points_to>("field";#any) ]]
-  [[ (ret == null) * <points_to>("field";#x) ]]
+  [[ (x == #x) * <ex>("field";#any) ]]
+  [[ (ret == null) * <ex>("field";#x) ]]
   normal
 proc test_store(x) {
   e := [store]("field", x);
@@ -11,8 +11,8 @@ proc test_store(x) {
 };
 
 spec test_store_domainset(x)
-  [[ (x == #x) * <points_to>("field";#any) * <domainset>(;-{"field"}-) ]]
-  [[ (ret == null) * <domainset>(;-{"field"}-) * <points_to>("field";#x) ]]
+  [[ (x == #x) * <ex>("field";#any) * <domainset>(;-{"field"}-) ]]
+  [[ (ret == null) * <domainset>(;-{"field"}-) * <ex>("field";#x) ]]
   normal
 proc test_store_domainset(x) {
   e := [store]("field", x);
@@ -22,7 +22,7 @@ proc test_store_domainset(x) {
 
 spec test_store_missing(x)
   [[ (x == #x) ]]
-  [[ (ret == null) * <points_to>("field";#x) ]]
+  [[ (ret == null) * <ex>("field";#x) ]]
   normal
 proc test_store_missing(x) {
   e := [store]("field", x);
@@ -32,7 +32,7 @@ proc test_store_missing(x) {
 
 spec test_store_missing_with_domainset(x)
   [[ (x == #x) * <domainset>(;-{"other"}-) ]]
-  [[ (ret == null) * <points_to>("field";#x) * <domainset>(;-{"other", "field"}-) ]]
+  [[ (ret == null) * <ex>("field";#x) * <domainset>(;-{"other", "field"}-) ]]
   normal
 proc test_store_missing_with_domainset(x) {
   e := [store]("field", x);
@@ -51,8 +51,8 @@ proc test_invalid_store(x) {
 };
 
 spec test_load()
-  [[ (<points_to>("field";#any)) ]]
-  [[ (ret == {{ #any }}) * <points_to>("field";#any) ]]
+  [[ (<ex>("field";#any)) ]]
+  [[ (ret == {{ #any }}) * <ex>("field";#any) ]]
   normal
 proc test_load() {
   x := [load]("field");
@@ -63,7 +63,7 @@ proc test_load() {
 
 spec test_load_when_missing_with_domainset()
   [[ <domainset>(;-{"other"}-) ]]
-  [[ (ret == {{ 0i }}) * <points_to>("field";0i) * <domainset>(;-{"other", "field"}-) ]]
+  [[ (ret == {{ 0i }}) * <ex>("field";0i) * <domainset>(;-{"other", "field"}-) ]]
   normal
 proc test_load_when_missing_with_domainset() {
   x := [load]("field");
@@ -73,7 +73,7 @@ proc test_load_when_missing_with_domainset() {
 
 spec test_load_when_missing()
   [[ emp ]]
-  [[ (ret == {{ 0i }}) * <points_to>("field";0i) ]]
+  [[ (ret == {{ 0i }}) * <ex>("field";0i) ]]
   normal
 proc test_load_when_missing() {
   x := [load]("field");

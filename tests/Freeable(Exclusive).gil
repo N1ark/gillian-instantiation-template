@@ -1,8 +1,8 @@
 (* Freeable (Exclusive) *)
 
 spec test_store(x)
-  [[ (x == #x) * <points_to>(;#any) ]]
-  [[ (ret == null) * <points_to>(;#x) ]]
+  [[ (x == #x) * <ex>(;#any) ]]
+  [[ (ret == null) * <ex>(;#x) ]]
   normal
 proc test_store(x) {
   e := [store](x);
@@ -21,7 +21,7 @@ proc test_invalid_store(x) {
 };
 
 spec test_free()
-  [[ <points_to>(;#any) ]]
+  [[ <ex>(;#any) ]]
   [[ (ret == null) * <freed>(;) ]]
   normal
 proc test_free() {
@@ -32,7 +32,7 @@ proc test_free() {
 
 
 spec helper_test_free_spec_execution()
-  [[ <points_to>(;0i) ]]
+  [[ <ex>(;0i) ]]
   [[ (ret == null) * <freed>(;) ]]
   normal
 proc helper_test_free_spec_execution() {
@@ -42,7 +42,7 @@ proc helper_test_free_spec_execution() {
 };
 
 spec test_free_spec_execution()
-  [[ <points_to>(;0i) ]]
+  [[ <ex>(;0i) ]]
   [[ (ret == null) * <freed>(;) ]]
   normal
 proc test_free_spec_execution() {
@@ -62,7 +62,7 @@ proc test_invalid_free_no_resource() {
 };
 
 spec test_invalid_double_free()
-  [[ <points_to>(;#any) ]]
+  [[ <ex>(;#any) ]]
   [[ (ret == null) ]]
   normal
 proc test_invalid_double_free() {
@@ -73,8 +73,8 @@ proc test_invalid_double_free() {
 };
 
 spec test_load()
-  [[ (<points_to>(;#any)) ]]
-  [[ (ret == {{ #any }}) * <points_to>(;#any) ]]
+  [[ (<ex>(;#any)) ]]
+  [[ (ret == {{ #any }}) * <ex>(;#any) ]]
   normal
 proc test_load() {
   x := [load]();
@@ -83,7 +83,7 @@ proc test_load() {
 };
 
 spec test_invalid_load_from_freed()
-  [[ <points_to>(;#any) ]]
+  [[ <ex>(;#any) ]]
   [[ (ret == null) ]]
   normal
 proc test_invalid_load_from_freed() {

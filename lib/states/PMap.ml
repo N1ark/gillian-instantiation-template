@@ -23,7 +23,7 @@ module type PMapIndex = sig
   val is_valid_index : Expr.t -> Expr.t option Delayed.t
 
   (** Creates a new address, for allocating new state. Only used in static mode *)
-  val make_fresh : unit -> Expr.t
+  val make_fresh : unit -> Expr.t Delayed.t
 
   (** The arguments used when instantiating new state. Only used in dynamic mode *)
   val default_instantiation : Expr.t list
@@ -34,7 +34,7 @@ module LocationIndex : PMapIndex = struct
 
   let make_fresh () =
     let loc = ALoc.alloc () in
-    Expr.loc_from_loc_name loc
+    Expr.loc_from_loc_name loc |> Delayed.return
 
   let is_valid_index e =
     Delayed_option.map (MyUtils.get_loc e) Expr.loc_from_loc_name
@@ -49,6 +49,32 @@ module StringIndex : PMapIndex = struct
     | l -> Delayed.return (Some l)
 
   let make_fresh () = failwith "Invalid in dynamic mode"
+  let default_instantiation = []
+end
+
+module IntegerIndex : PMapIndex = struct
+  open Formula.Infix
+  open Expr.Infix
+
+  let mode = Static
+  let last_index = ref None
+
+  let make_fresh () =
+    let lvar = LVar.alloc () in
+    let e = Expr.LVar lvar in
+    let learnt =
+      match !last_index with
+      | None -> []
+      | Some last -> [ e #== (last + Expr.int 1) ]
+    in
+    last_index := Some e;
+    Delayed.return ~learned:learnt
+      ~learned_types:[ (lvar, Type.IntType) ]
+      (Expr.LVar lvar)
+
+  let is_valid_index = function
+    | l -> Delayed.return (Some l)
+
   let default_instantiation = []
 end
 
@@ -191,10 +217,10 @@ struct
         match I.mode with
         | Dynamic -> DR.error AllocDisallowedInDynamic
         | Static ->
-            let idx = I.make_fresh () in
+            let+ idx = I.make_fresh () in
             let ss, v = S.instantiate args in
             let s' = update_entry s idx idx ss |> domain_add idx in
-            DR.ok (s', idx :: v))
+            Ok (s', idx :: v))
     | GetDomainSet, [] -> (
         match s with
         (* Implementation taken from JSIL:

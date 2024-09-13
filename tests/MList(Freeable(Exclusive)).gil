@@ -1,8 +1,8 @@
 (* MList (Freeable (Exclusive)) *)
 
 spec test_invalid_store_after_free(x)
-  [[ (x == #x) * <length>(;1i) * <points_to>(0i;#any) ]]
-  [[ (ret == null) * <length>(;1i) * <points_to>(0i;#any) ]]
+  [[ (x == #x) * <length>(;1i) * <ex>(0i;#any) ]]
+  [[ (ret == null) * <length>(;1i) * <ex>(0i;#any) ]]
   normal
 proc test_invalid_store_after_free(x) {
   e := [free](0i);
@@ -12,8 +12,8 @@ proc test_invalid_store_after_free(x) {
 };
 
 spec test_valid_store_unfreed_index(x)
-  [[ (x == #x) * <length>(;2i) * <freed>(0i;) * <points_to>(1i;#any) ]]
-  [[ (ret == null) * <length>(;2i) * <freed>(0i;) * <points_to>(1i;#x) ]]
+  [[ (x == #x) * <length>(;2i) * <freed>(0i;) * <ex>(1i;#any) ]]
+  [[ (ret == null) * <length>(;2i) * <freed>(0i;) * <ex>(1i;#x) ]]
   normal
 proc test_valid_store_unfreed_index(x) {
   e := [store](1i, x);
@@ -23,8 +23,8 @@ proc test_valid_store_unfreed_index(x) {
 
 
 spec test_invalid_store_freed_index(x)
-  [[ (x == #x) * <length>(;2i) * <freed>(0i;) * <points_to>(1i;#any) ]]
-  [[ (ret == null) * <length>(;2i) * <freed>(0i;) * <points_to>(1i;#x) ]]
+  [[ (x == #x) * <length>(;2i) * <freed>(0i;) * <ex>(1i;#any) ]]
+  [[ (ret == null) * <length>(;2i) * <freed>(0i;) * <ex>(1i;#x) ]]
   normal
 proc test_invalid_store_freed_index(x) {
   e := [store](0i, x);
@@ -33,7 +33,7 @@ proc test_invalid_store_freed_index(x) {
 };
 
 spec test_free_indices()
-  [[ <length>(;2i) *  <points_to>(0i;#any) * <points_to>(1i;#any) ]]
+  [[ <length>(;2i) *  <ex>(0i;#any) * <ex>(1i;#any) ]]
   [[ (ret == null) * <length>(;2i) * <freed>(0i;) * <freed>(1i;) ]]
   normal
 proc test_free_indices() {
@@ -54,8 +54,8 @@ proc test_invalid_free_unowned_index() {
 };
 
 spec test_invalid_free_out_of_bounds()
-  [[ <length>(;1i) * <points_to>(0i;#any) ]]
-  [[ (ret == null) * <length>(;1i) * <points_to>(0i;#any) ]]
+  [[ <length>(;1i) * <ex>(0i;#any) ]]
+  [[ (ret == null) * <length>(;1i) * <ex>(0i;#any) ]]
   normal
 proc test_invalid_free_out_of_bounds() {
   e := [free](1i);
@@ -68,8 +68,8 @@ proc test_invalid_free_out_of_bounds() {
    They should behave the exact same. *)
 
 spec test_store(x)
-  [[ (x == #x) * <length>(;1i) * <points_to>(0i;#any) ]]
-  [[ (ret == null) * <length>(;1i) * <points_to>(0i;#x) ]]
+  [[ (x == #x) * <length>(;1i) * <ex>(0i;#any) ]]
+  [[ (ret == null) * <length>(;1i) * <ex>(0i;#x) ]]
   normal
 proc test_store(x) {
   e := [store](0i, x);
@@ -78,8 +78,8 @@ proc test_store(x) {
 };
 
 spec test_store_no_length(x)
-  [[ (x == #x) * <points_to>(11i;#b) ]]
-  [[ (ret == null) * <points_to>(11i;#x) ]]
+  [[ (x == #x) * <ex>(11i;#b) ]]
+  [[ (ret == null) * <ex>(11i;#x) ]]
   normal
 proc test_store_no_length(x) {
   e := [store](11i, x);
@@ -88,8 +88,8 @@ proc test_store_no_length(x) {
 };
 
 spec test_invalid_out_of_bound_store(x)
-  [[ (x == #x) * <length>(;1i) * <points_to>(0i;#any) ]]
-  [[ (ret == null) * <length>(;1i) * <points_to>(0i;#any) ]]
+  [[ (x == #x) * <length>(;1i) * <ex>(0i;#any) ]]
+  [[ (ret == null) * <length>(;1i) * <ex>(0i;#any) ]]
   normal
 proc test_invalid_out_of_bound_store(x) {
   e := [store](1i, x);
@@ -108,8 +108,8 @@ proc test_invalid_store_missing_resource(x) {
 };
 
 spec test_load()
-  [[ <points_to>(0i;#any) * <length>(;1i) ]]
-  [[ (ret == {{ #any }}) * <points_to>(0i;#any) * <length>(;1i) ]]
+  [[ <ex>(0i;#any) * <length>(;1i) ]]
+  [[ (ret == {{ #any }}) * <ex>(0i;#any) * <length>(;1i) ]]
   normal
 proc test_load() {
   x := [load](0i);
@@ -118,8 +118,8 @@ proc test_load() {
 };
 
 spec test_invalid_out_of_bound_load()
-  [[ <points_to>(0i;#any) * <length>(;1i) ]]
-  [[ (ret == null) * <points_to>(0i;#any) * <length>(;1i) ]]
+  [[ <ex>(0i;#any) * <length>(;1i) ]]
+  [[ (ret == null) * <ex>(0i;#any) * <length>(;1i) ]]
   normal
 proc test_invalid_out_of_bound_load() {
   x := [load](2i);

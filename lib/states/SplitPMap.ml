@@ -165,10 +165,10 @@ struct
         match I.mode with
         | Dynamic -> DR.error AllocDisallowedInDynamic
         | Static ->
-            let idx = I.make_fresh () in
+            let+ idx = I.make_fresh () in
             let ss, v = S.instantiate args in
             let s' = update_entry s idx idx ss |> domain_add idx in
-            DR.ok (s', idx :: v))
+            Ok (s', idx :: v))
     | GetDomainSet, [] -> (
         match s with
         (* Implementation taken from JSIL:

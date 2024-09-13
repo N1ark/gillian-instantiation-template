@@ -1,8 +1,8 @@
 (* Product (IDs) (Exclusive) (Fractional) *)
 
 spec test_left_load()
-  [[ <left_points_to>(;#x) * <right_frac>(1;#y) ]]
-  [[ (ret == {{ #x }}) * <left_points_to>(;#x) * <right_frac>(1;#y) ]]
+  [[ <left_ex>(;#x) * <right_frac>(1;#y) ]]
+  [[ (ret == {{ #x }}) * <left_ex>(;#x) * <right_frac>(1;#y) ]]
   normal
 proc test_left_load() {
   x := [left_load]();
@@ -12,8 +12,8 @@ proc test_left_load() {
 
 
 spec test_left_store(x)
-  [[ (x == #x) * <left_points_to>(;#any) * <right_frac>(1;#y) ]]
-  [[ (ret == null) * <left_points_to>(;#x) * <right_frac>(1;#y) ]]
+  [[ (x == #x) * <left_ex>(;#any) * <right_frac>(1;#y) ]]
+  [[ (ret == null) * <left_ex>(;#x) * <right_frac>(1;#y) ]]
   normal
 proc test_left_store(x) {
   x := [left_store](x);
@@ -22,8 +22,8 @@ proc test_left_store(x) {
 };
 
 spec test_right_load()
-  [[ <right_frac>(1;#x) * <left_points_to>(;#y) ]]
-  [[ (ret == {{ #x }}) * <right_frac>(1;#x) * <left_points_to>(;#y) ]]
+  [[ <right_frac>(1;#x) * <left_ex>(;#y) ]]
+  [[ (ret == {{ #x }}) * <right_frac>(1;#x) * <left_ex>(;#y) ]]
   normal
 proc test_right_load() {
   x := [right_load]();
@@ -32,8 +32,8 @@ proc test_right_load() {
 };
 
 spec test_right_store(x)
-  [[ (x == #x) * <right_frac>(1;#any) * <left_points_to>(;#y) ]]
-  [[ (ret == null) * <right_frac>(1;#x) * <left_points_to>(;#y) ]]
+  [[ (x == #x) * <right_frac>(1;#any) * <left_ex>(;#y) ]]
+  [[ (ret == null) * <right_frac>(1;#x) * <left_ex>(;#y) ]]
   normal
 proc test_right_store(x) {
   x := [right_store](x);
@@ -43,8 +43,8 @@ proc test_right_store(x) {
 
 
 spec test_right_invalid_store(x)
-  [[ (x == #x) * <right_frac>(0.5;#any) * <left_points_to>(;#y) ]]
-  [[ (ret == null) * <right_frac>(0.5;#any) * <left_points_to>(;#y) ]]
+  [[ (x == #x) * <right_frac>(0.5;#any) * <left_ex>(;#y) ]]
+  [[ (ret == null) * <right_frac>(0.5;#any) * <left_ex>(;#y) ]]
   normal
 proc test_right_invalid_store(x) {
   x := [right_store](x);

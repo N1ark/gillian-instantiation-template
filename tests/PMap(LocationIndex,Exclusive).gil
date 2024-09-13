@@ -1,8 +1,8 @@
 (* PMap (LocationIndex) (Exclusive) *)
 
 spec test_store(x, a)
-  [[ (x == #x) * (a == #a) * <points_to>(#a;#any) ]]
-  [[ (ret == null) * <points_to>(#a;#x) ]]
+  [[ (x == #x) * (a == #a) * <ex>(#a;#any) ]]
+  [[ (ret == null) * <ex>(#a;#x) ]]
   normal
 proc test_store(x, a) {
   e := [store](a, x);
@@ -11,8 +11,8 @@ proc test_store(x, a) {
 };
 
 spec test_store_domainset(x, a)
-  [[ (x == #x) * (a == #a) * <points_to>(#a;#any) * <domainset>(;-{#a}-) ]]
-  [[ (ret == null) * <domainset>(;-{#a}-) * <points_to>(#a;#x) ]]
+  [[ (x == #x) * (a == #a) * <ex>(#a;#any) * <domainset>(;-{#a}-) ]]
+  [[ (ret == null) * <domainset>(;-{#a}-) * <ex>(#a;#x) ]]
   normal
 proc test_store_domainset(x, a) {
   e := [store](a, x);
@@ -31,8 +31,8 @@ proc test_invalid_store(x, a) {
 };
 
 spec test_load(a)
-  [[ (a == #a) * <points_to>(#a;#any) ]]
-  [[ (ret == {{ #any }}) * <points_to>(#a;#any) ]]
+  [[ (a == #a) * <ex>(#a;#any) ]]
+  [[ (ret == {{ #any }}) * <ex>(#a;#any) ]]
   normal
 proc test_load(a) {
   x := [load](a);
@@ -52,7 +52,7 @@ proc test_invalid_load(a) {
 
 spec test_alloc_no_domainset()
   [[ emp ]]
-  [[ (ret == {{#a}}) * <points_to>(#a;undefined) ]]
+  [[ (ret == {{#a}}) * <ex>(#a;undefined) ]]
   normal
 proc test_alloc_no_domainset() {
   e := [alloc]();
@@ -62,7 +62,7 @@ proc test_alloc_no_domainset() {
 
 spec test_alloc_domainset()
   [[ <domainset>(;-{#a}-) ]]
-  [[ (ret == {{#b}}) * <points_to>(#b;undefined) * <domainset>(;-{#a, #b}-) ]]
+  [[ (ret == {{#b}}) * <ex>(#b;undefined) * <domainset>(;-{#a, #b}-) ]]
   normal
 proc test_alloc_domainset() {
   e := [alloc]();

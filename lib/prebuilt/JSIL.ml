@@ -87,9 +87,9 @@ module JSSubst : NameMap = struct
 
   let pred_substitutions =
     [
-      ("Cell", "left_points_to");
+      ("Cell", "left_ex");
       ("Props", "left_inner_domainset");
-      ("Metadata", "right_agree");
+      ("Metadata", "right_ag");
     ]
 end
 
