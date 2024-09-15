@@ -337,10 +337,10 @@ module Make (S : MyMonadicSMemory.S) = struct
         |> MyUtils.deep_map (MyAsrt.map_cp (lift_corepred idx'))
         |> List.map (fun f -> f @ [ MyAsrt.Pure idx #== idx' ])
     | MissingDomainSet ->
-        let lvar = LVar.alloc () in
+        let lvar = Expr.LVar (LVar.alloc ()) in
         [
           [
-            MyAsrt.CorePred (DomainSet, [], [ Expr.LVar lvar ]);
+            MyAsrt.CorePred (DomainSet, [], [ lvar ]);
             MyAsrt.Types [ (lvar, Type.SetType) ];
           ];
         ]

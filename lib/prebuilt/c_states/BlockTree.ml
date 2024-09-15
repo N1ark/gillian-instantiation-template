@@ -1683,11 +1683,9 @@ module M = struct
         let fixes =
           match chunk with
           | Mptr ->
-              let new_var1 = LVar.alloc () in
-              let new_var_e1 = Expr.LVar new_var1 in
-              let new_var2 = LVar.alloc () in
-              let new_var_e2 = Expr.LVar new_var2 in
-              let value = Expr.EList [ new_var_e1; new_var_e2 ] in
+              let new_var1 = Expr.LVar (LVar.alloc ()) in
+              let new_var2 = Expr.LVar (LVar.alloc ()) in
+              let value = Expr.EList [ new_var1; new_var2 ] in
               let null_typ =
                 if Compcert.Archi.ptr64 then Expr.string long_type
                 else Expr.string int_type
@@ -1713,9 +1711,8 @@ module M = struct
                 | Chunk.Mint64 -> (long_type, Type.IntType)
                 | _ -> (int_type, Type.IntType)
               in
-              let new_var = LVar.alloc () in
-              let new_var_e = Expr.LVar new_var in
-              let value = Expr.EList [ Expr.string type_str; new_var_e ] in
+              let new_var = Expr.LVar (LVar.alloc ()) in
+              let value = Expr.EList [ Expr.string type_str; new_var ] in
               [
                 [
                   MyAsrt.CorePred

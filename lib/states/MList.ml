@@ -228,10 +228,10 @@ module Make (S : MyMonadicSMemory.S) :
     | SubError (idx, e) ->
         S.get_fixes e |> MyUtils.deep_map (MyAsrt.map_cp (lift_corepred idx))
     | MissingLength ->
-        let lvar = LVar.alloc () in
+        let lvar = Expr.LVar (LVar.alloc ()) in
         [
           [
-            MyAsrt.CorePred (Length, [], [ Expr.LVar lvar ]);
+            MyAsrt.CorePred (Length, [], [ lvar ]);
             MyAsrt.Types [ (lvar, Type.IntType) ];
           ];
         ]

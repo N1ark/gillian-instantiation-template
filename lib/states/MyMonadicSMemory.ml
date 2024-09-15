@@ -144,39 +144,17 @@ struct
     let mapping (p, ins, outs) = Asrt.GA (pred_to_str p, ins, outs) in
     List.map mapping core_preds @ formulas
 
-  type c_fix_t = pred * Expr.t list * Expr.t list
-
-  let get_fixes _ _ _ e =
-    let rec build_fixes (corepreds, fmls, types, specvars) fix =
-      match fix with
-      | [] -> (corepreds, fmls, types, specvars)
-      | fix :: fixes ->
-          build_fixes
-            (match fix with
-            | MyAsrt.Emp -> (corepreds, fmls, types, specvars)
-            | MyAsrt.Pure fml -> (corepreds, fml :: fmls, types, specvars)
-            | MyAsrt.Types ts -> (corepreds, fmls, ts @ types, specvars)
-            | MyAsrt.CorePred (preds, ins, outs) ->
-                ((preds, ins, outs) :: corepreds, fmls, types, specvars))
-            fixes
-    in
-    let fixes = get_fixes e in
-    List.map (build_fixes ([], [], [], Containers.SS.empty)) fixes
-
-  let apply_fix s (pred, ins, outs) =
-    Delayed.map (Mem.produce pred s (ins @ outs)) Result.ok
+  let get_fixes e =
+    get_fixes e
+    |> MyUtils.deep_map @@ function
+       | MyAsrt.Emp -> Asrt.Emp
+       | MyAsrt.Pure f -> Asrt.Pure f
+       | MyAsrt.Types ts -> Asrt.Types ts
+       | MyAsrt.CorePred (p, ins, outs) -> Asrt.GA (pred_to_str p, ins, outs)
 
   (* Override methods to keep implementations light *)
   let clear _ = empty ()
   let pp_err = pp_err_t
   let get_recovery_tactic _ = get_recovery_tactic
-
-  let pp_c_fix (fmt : Format.formatter) ((p, ins, outs) : c_fix_t) : unit =
-    Format.fprintf fmt "<%s>(%a;%a)" (pred_to_str p)
-      Fmt.(list ~sep:comma Expr.pp)
-      ins
-      Fmt.(list ~sep:comma Expr.pp)
-      outs
-
   let pp_by_need _ = pp
 end

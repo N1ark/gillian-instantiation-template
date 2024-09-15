@@ -44,9 +44,8 @@ module Make (S : SMemory.S) = struct
   let get_failing_constraint =
     m1 "get_failing_constraint" get_failing_constraint
 
-  let get_fixes = m4 "get_fixes" get_fixes
+  let get_fixes = m1 "get_fixes" get_fixes
   let can_fix = m1 "can_fix" can_fix
-  let apply_fix = m4 "apply_fix" apply_fix
   let sure_is_nonempty = m1 "sure_is_nonempty" sure_is_nonempty
   let split_further = m4 "split_further" split_further
 

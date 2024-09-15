@@ -132,7 +132,7 @@ let pp_opt pp_v fmt = function
   | Some v -> Format.fprintf fmt "Some %a" pp_v v
   | None -> Format.pp_print_string fmt "None"
 
-let deep_map f l = List.map (fun l' -> List.map f l') l
+let deep_map f = List.map @@ List.map f
 
 (** Faster than Delayed.resolve_loc, attempts to resolve a location. This may result in
 extending the path condition. Returns None if the input can definitely not be a location. *)

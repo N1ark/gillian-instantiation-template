@@ -39,6 +39,7 @@ module Injector = Injector.Make
 module Logger = Logger.Make
 module Mapper = Mapper.Make
 module MList = MList.Make
+module OpenPMap = OpenPMap.Make
 module PMap = States.PMap.Make
 module PMapEnt = States.PMap.MakeEnt
 module Product = Product.Make
