@@ -1,26 +1,28 @@
 open Gillian
 open States
+(* open Prebuilt.Utils*)
 
 (* Select prebuilt mode (or build one!) *)
-module Prebuilt = Prebuilt.Lib.JSIL_ALoc
+module Prebuilt = Prebuilt.Lib.C_Base
+
+(* state model: *)
+module MyMem = Prebuilt.MonadicSMemory
 
 (* get modules *)
-module MyMem = Prebuilt.MonadicSMemory
 module PC = Prebuilt.ParserAndCompiler
 module ExternalSemantics = Prebuilt.ExternalSemantics
 module InitData = Prebuilt.InitData
 
 (* Debug *)
-(* module Debug = Debug.Make (MyMem)
+module Debug = Debug.Make (MyMem)
 
-   let () = Debug.print_info ()*)
+let () = Debug.print_info ()
 
 (* Convert custom memory model -> Gillian memory model *)
 module PatchedMem = MyMonadicSMemory.Make (MyMem) (Prebuilt.MyInitData)
 
 (* Gillian Instantiation *)
-module SMemory =
-  PerfMeasurer.Make (Gillian.Monadic.MonadicSMemory.Lift (PatchedMem))
+module SMemory = Gillian.Monadic.MonadicSMemory.Lift (PatchedMem)
 
 module Lifter
     (Verifier : Gillian.Abstraction.Verifier.S
