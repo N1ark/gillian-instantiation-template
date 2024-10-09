@@ -125,16 +125,20 @@ module Make (S : MyMonadicSMemory.S) :
 
   let is_exclusively_owned s e =
     let open Delayed.Syntax in
+    let open Formula.Infix in
     match s with
-    | b, Some _ ->
-        let rec check l acc =
-          let* acc = acc in
-          match (acc, l) with
-          | false, _ -> Delayed.return false
-          | true, [] -> Delayed.return true
-          | true, (_, hd) :: tl -> check tl (S.is_exclusively_owned hd e)
-        in
-        check (ExpMap.bindings b) (Delayed.return true)
+    | b, Some n ->
+        (* This does the assumption that all indices are different values *)
+        if%sat n #== (Expr.int (ExpMap.cardinal b)) then
+          let rec check l acc =
+            let* acc = acc in
+            match (acc, l) with
+            | false, _ -> Delayed.return false
+            | true, [] -> Delayed.return true
+            | true, (_, hd) :: tl -> check tl (S.is_exclusively_owned hd e)
+          in
+          check (ExpMap.bindings b) (Delayed.return true)
+        else Delayed.return false
     | _, None -> Delayed.return false
 
   let is_empty = function
