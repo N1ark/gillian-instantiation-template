@@ -147,34 +147,6 @@ end:
 
 
 
-
-
-(*
-
-
-spec sqrt(x)
-    [[ x == #x * <points_to>(#x; #v) * (#v >= 0i) ]]
-    [[ ret == 0i * <points_to>(#x; #vr) * (#vr * #vr == #v) ]]
-proc sqrt(x) { ... }
-
-
-
-
-
-spec square(x)
-    [[ x == #x * <points_to>(#x; #v) ]]
-    [[ ret == 0i * <points_to>(#x; #v * #v) ]]
-proc square(x) {
-    v := [load](x);
-    [store](x, v * v);
-    "register_access"(x);
-    return 0
-}
-
- *)
-
-
-
 spec free_list(h)
      [[ (h == #h) * sll(#h, #vs) ]]
     [[ (ret == null) ]]
