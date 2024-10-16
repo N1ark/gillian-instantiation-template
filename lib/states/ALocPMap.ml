@@ -9,16 +9,7 @@ module type PMapIndex = PMap.PMapIndex
 module StringIndex = PMap.StringIndex
 module LocationIndex = PMap.LocationIndex
 module SS = Gillian.Utils.Containers.SS
-
-module SMap = Gillian.Utils.Prelude.Map.Make (struct
-  include String
-
-  let of_yojson = function
-    | `String s -> Ok s
-    | _ -> Error "string_of_yojson: expected string"
-
-  let to_yojson s = `String s
-end)
+module SMap = MyUtils.SMap
 
 module Make (S : MyMonadicSMemory.S) = struct
   type entry = S.t [@@deriving yojson]

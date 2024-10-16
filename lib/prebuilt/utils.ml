@@ -39,11 +39,16 @@ module Injector = Injector.Make
 module Logger = Logger.Make
 module Mapper = Mapper.Make
 module MList = MList.Make
-module OpenALocPMap = OpenALocPMap.Make
-module OpenPMap = OpenPMap.Make
-module OpenSplitPMap = OpenSplitPMap.Make
 module PMap = States.PMap.Make
 module PMapEnt = States.PMap.MakeEnt
 module Product = Product.Make
 module SplitPMap = SplitPMap.Make
 module Sum = Sum.Make
+
+(* PMaps *)
+module OpenALocPMap = OpenPMap.MakeOfImpl (OpenPMap.ALocImpl)
+
+module OpenSplitPMap (I : PMapIndex) =
+  OpenPMap.MakeOfImpl (OpenPMap.SplitImplSat (I))
+
+module OpenPMap (I : PMapIndex) = OpenPMap.MakeOfImpl (OpenPMap.BaseImplSat (I))

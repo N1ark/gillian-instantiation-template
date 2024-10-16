@@ -68,8 +68,8 @@ module ExtendMemory (S : C_PMapType) = struct
                     (fun e -> BlockTreeErr (src_loc, dst_loc, e))
                 in
                 let s' =
-                  S.update_entry s dst_loc dst_loc'
-                    (States.Freeable.SubState dest)
+                  S.update_entry ~idx:dst_loc ~idx':dst_loc'
+                    (States.Freeable.SubState dest) s
                 in
                 DR.ok (s', []))
       | _ -> failwith "Invalid arguments for mem_move"

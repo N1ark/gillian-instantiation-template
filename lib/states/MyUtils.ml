@@ -152,6 +152,16 @@ let get_loc =
           some ~learned:[ e #== (ALoc loc_name) ] loc_name)
   | _ -> none ()
 
+module SMap = Gillian.Utils.Prelude.Map.Make (struct
+  include String
+
+  let of_yojson = function
+    | `String s -> Ok s
+    | _ -> Error "string_of_yojson: expected string"
+
+  let to_yojson s = `String s
+end)
+
 let bind_vanish_on_err (x : ('a, 'e) result Delayed.t) (f : 'a -> 'b Delayed.t)
     : 'b Delayed.t =
   let open Delayed.Syntax in
