@@ -11,11 +11,12 @@ module CGEnv = C_states.CGEnv.M
 (* Base memories *)
 module BaseBlock = Freeable (BlockTree)
 
-module type C_PMapType = States.PMap.PMapType with type entry = BaseBlock.t
+module type C_PMapType =
+  States.OpenPMap.OpenPMapType with type entry = BaseBlock.t
 
-module BaseMemory : C_PMapType = PMap (LocationIndex) (BaseBlock)
-module SplitMemory : C_PMapType = SplitPMap (LocationIndex) (BaseBlock)
-module ALocMemory : C_PMapType = ALocPMap (BaseBlock)
+module BaseMemory : C_PMapType = OpenPMap (LocationIndex) (BaseBlock)
+module SplitMemory : C_PMapType = OpenSplitPMap (LocationIndex) (BaseBlock)
+module ALocMemory : C_PMapType = OpenALocPMap (BaseBlock)
 
 (* Add move action implementation *)
 module ExtendMemory (S : C_PMapType) = struct

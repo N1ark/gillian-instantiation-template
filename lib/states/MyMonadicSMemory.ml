@@ -45,7 +45,7 @@ module type S = sig
   val is_concrete : t -> bool
   val instantiate : Expr.t list -> t * Expr.t list
 
-  (* Core predicates: pred * ins * outs, converted to Asrt.GA *)
+  (* Core predicates: pred * ins * outs, converted to Asrt.CorePred *)
   val assertions : t -> (pred * Expr.t list * Expr.t list) list
   val assertions_others : t -> Asrt.t list
 

@@ -12,11 +12,11 @@ module ExclusiveNull = struct
     | _ -> failwith "ExclusiveNull: instantiate: too many arguments"
 end
 
-module BaseMemory = PMap (LocationIndex) (Freeable (MList (ExclusiveNull)))
-module ALocMemory = ALocPMap (Freeable (MList (ExclusiveNull)))
+module BaseMemory = OpenPMap (LocationIndex) (Freeable (MList (ExclusiveNull)))
+module ALocMemory = OpenALocPMap (Freeable (MList (ExclusiveNull)))
 
 module SplitMemory =
-  SplitPMap (LocationIndex) (Freeable (MList (ExclusiveNull)))
+  OpenSplitPMap (LocationIndex) (Freeable (MList (ExclusiveNull)))
 
 module WISLSubst : NameMap = struct
   let action_substitutions =

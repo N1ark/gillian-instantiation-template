@@ -210,10 +210,10 @@ end
 
 (* Patch map pretty-printing for nicer diffs *)
 module PatchedBasePMap (S : MyMonadicSMemory) :
-  States.PMap.PMapType with type entry = S.t = struct
-  include PMap (LocationIndex) (S)
+  States.OpenPMap.OpenPMapType with type entry = S.t = struct
+  include OpenPMap (LocationIndex) (S)
 
-  let pp ft ((h, _) : t) =
+  let pp ft (h : t) =
     let open Fmt in
     let sorted_locs_with_vals =
       ExpMap.bindings h |> List.sort (fun (k1, _) (k2, _) -> Expr.compare k1 k2)
@@ -226,12 +226,12 @@ end
 
 (* Patch map pretty-printing for nicer diffs *)
 module PatchedALocPMap (S : MyMonadicSMemory) = struct
-  include ALocPMap (S)
+  include OpenALocPMap (S)
 
-  let pp ft ((h, _) : t) =
+  let pp ft (h : t) =
     let open Fmt in
     let sorted_locs_with_vals =
-      States.ALocPMap.SMap.bindings h
+      States.OpenALocPMap.SMap.bindings h
       |> List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2)
     in
     let pp_one ft (loc, fv_pairs) = pf ft "@[%s |-> %a@]" loc S.pp fv_pairs in
@@ -244,7 +244,7 @@ end
    Need to take that into consideration + similarly to WISL, return the index on each action. *)
 module PatchAlloc
     (Obj : MyMonadicSMemory)
-    (Map : States.PMap.PMapType with type entry = Obj.t) =
+    (Map : States.OpenPMap.OpenPMapType with type entry = Obj.t) =
 struct
   include Map
   module SS = Gillian.Utils.Containers.SS
@@ -268,7 +268,7 @@ struct
         in
         let idx = Expr.loc_from_loc_name idx in
         let ss, v = Obj.instantiate [ v ] in
-        let s' = update_entry s idx idx ss |> domain_add idx in
+        let s' = update_entry s idx idx ss in
         Delayed_result.ok (s', idx :: v)
     | _ -> execute_action a s args
 end
@@ -279,7 +279,7 @@ module SplitObject = BaseMemoryContent (PatchDomainsetObject (SplitObjectBase))
 
 module Wrap
     (Obj : MyMonadicSMemory)
-    (Map : States.PMap.PMapType with type entry = Obj.t) =
+    (Map : States.OpenPMap.OpenPMapType with type entry = Obj.t) =
   Filter (JSFilter) (Mapper (JSSubst) (PatchAlloc (Obj) (Map)))
 
 (* Actual exports *)

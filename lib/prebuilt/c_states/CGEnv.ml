@@ -48,7 +48,7 @@ module M : States.MyMonadicSMemory.S with type t = Global_env.t = struct
   let is_concrete _ = false
   let instantiate _ = (Global_env.empty, [])
 
-  (* Core predicates: pred * ins * outs, converted to Asrt.GA *)
+  (* Core predicates: pred * ins * outs, converted to Asrt.CorePred *)
   let assertions _ = []
   let assertions_others _ = []
   let can_fix () = false
