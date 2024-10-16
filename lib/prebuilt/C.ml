@@ -55,8 +55,8 @@ module ExtendMemory (S : C_PMapType) = struct
           let open Formula.Infix in
           if%sat size #== (Expr.int 0) then DR.ok (s, [])
           else
-            let**^ _, src = S.validate_index s src_loc in
-            let**^ dst_loc', dest = S.validate_index s dst_loc in
+            let**^ _, src = S.get s src_loc in
+            let**^ dst_loc', dest = S.get s dst_loc in
             match (src, dest) with
             | States.Freeable.None, _ | _, States.Freeable.None ->
                 DR.error MoveOnMissing
@@ -68,7 +68,7 @@ module ExtendMemory (S : C_PMapType) = struct
                     (fun e -> BlockTreeErr (src_loc, dst_loc, e))
                 in
                 let s' =
-                  S.update_entry ~idx:dst_loc ~idx':dst_loc'
+                  S.set ~idx:dst_loc ~idx':dst_loc'
                     (States.Freeable.SubState dest) s
                 in
                 DR.ok (s', []))

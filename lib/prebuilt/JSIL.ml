@@ -268,7 +268,7 @@ struct
         in
         let idx = Expr.loc_from_loc_name idx in
         let ss, v = Obj.instantiate [ v ] in
-        let s' = update_entry ~idx ~idx':idx ss s in
+        let s' = set ~idx ~idx':idx ss s in
         Delayed_result.ok (s', idx :: v)
     | _ -> execute_action a s args
 end

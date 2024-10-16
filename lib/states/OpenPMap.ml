@@ -8,20 +8,32 @@ module type OpenPMapImpl = sig
   type entry
   type t [@@deriving yojson]
 
-  val pp : Format.formatter -> t -> unit
   val empty : t
   val fold : (Expr.t -> entry -> 'a -> 'a) -> t -> 'a -> 'a
   val for_all : (entry -> bool) -> t -> bool
 
+  (* Note for the below two functions we use option Delayed rather than
+     result Delayed, to avoid the headache of handling additional errors. *)
+
+  (** Validates the index, by returning possibly a new index (or that same index).
+      Returns None if the index is not valid. *)
+  val validate_index : Expr.t -> Expr.t option Delayed.t
+
   (** Returns (symbolically) the state at the given index if it's found,
-      or None if no state can be there (ie. the index is not valid, for open PMaps). *)
-  val validate_index : t -> Expr.t -> (Expr.t * entry) option Delayed.t
+      or None if no state is there, in which case an empty binding could be
+      created there instead. It's important this function doesn't return an empty
+      state (with MyMonadicSMemory.empty ()), but None, as the caller might need
+      to distinguish these situations (eg. checking a domain set).
+
+      This function should assume the index is valid (ie. it was returned by `validate_index`).
+      *)
+  val get : t -> Expr.t -> (Expr.t * entry) option Delayed.t
 
   (** Updates the entry with the given state; `idx` represents the previous
       index of the state, in case a new index was found for it. In other words, after
       this operation the map must store nothing at `idx`, and the new state at `idx'`.
       `idx` and `idx'` can be equal, in which case the state is just added/updated. *)
-  val update_entry : idx:Expr.t -> idx':Expr.t -> entry -> t -> t
+  val set : idx:Expr.t -> idx':Expr.t -> entry -> t -> t
 
   val compose : t -> t -> t Delayed.t
   val substitution_in_place : Subst.t -> t -> t Delayed.t
@@ -32,8 +44,8 @@ module type OpenPMapType = sig
 
   type entry
 
-  val validate_index : t -> Expr.t -> (Expr.t * entry, err_t) DR.t
-  val update_entry : idx:Expr.t -> idx':Expr.t -> entry -> t -> t
+  val get : t -> Expr.t -> (Expr.t * entry, err_t) DR.t
+  val set : idx:Expr.t -> idx':Expr.t -> entry -> t -> t
 end
 
 module MakeOfImpl
@@ -48,8 +60,9 @@ struct
   type t = I.t [@@deriving yojson]
 
   let pp fmt (h : t) =
+    let iter f h = I.fold (fun k v () -> f k v) h () in
     Format.pp_open_vbox fmt 0;
-    Format.fprintf fmt "%a" I.pp h;
+    MyUtils.pp_bindings ~pp_k:Expr.pp ~pp_v:S.pp iter fmt h;
     Format.pp_close_box fmt ()
 
   type err_t =
@@ -82,12 +95,18 @@ struct
   let list_preds () =
     List.map (fun (p, ins, outs) -> (p, "index" :: ins, outs)) (S.list_preds ())
 
-  let update_entry = I.update_entry
+  let get s idx =
+    let open Delayed.Syntax in
+    let* idx_opt = I.validate_index idx in
+    match idx_opt with
+    | None -> DR.error (InvalidIndexValue idx)
+    | Some idx' -> (
+        let* res = I.get s idx' in
+        match res with
+        | None -> DR.ok (idx', S.empty ())
+        | Some res -> DR.ok res)
 
-  let validate_index s idx =
-    Delayed.map (I.validate_index s idx) (function
-      | None -> Error (InvalidIndexValue idx)
-      | Some ss -> Ok ss)
+  let set = I.set
 
   let lifting_err idx idx' v fn =
     match v with
@@ -102,16 +121,16 @@ struct
     match (action, args) with
     | SubAction _, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args ->
-        let** idx', ss = validate_index s idx in
+        let** idx', ss = get s idx in
         let+ r = S.execute_action action ss args in
         let ( let+^ ) = lifting_err idx idx' in
         let+^ ss', v = r in
-        let s' = update_entry ~idx ~idx' ss' s in
+        let s' = set ~idx ~idx' ss' s in
         (s', idx' :: v)
     | Alloc, args ->
         let idx = Expr.ALoc (ALoc.alloc ()) in
         let ss, v = S.instantiate args in
-        let s' = update_entry ~idx ~idx':idx ss s in
+        let s' = set ~idx ~idx':idx ss s in
         DR.ok (s', idx :: v)
 
   let consume pred s ins =
@@ -120,11 +139,11 @@ struct
     match ins with
     | [] -> failwith "Missing index for sub-predicate"
     | idx :: ins ->
-        let** idx', ss = validate_index s idx in
+        let** idx', ss = get s idx in
         let+ r = S.consume pred ss ins in
         let ( let+^ ) = lifting_err idx idx' in
         let+^ ss', v = r in
-        let s' = update_entry ~idx ~idx' ss' s in
+        let s' = set ~idx ~idx' ss' s in
         (s', v)
 
   let produce pred s args =
@@ -133,9 +152,9 @@ struct
     match args with
     | [] -> failwith "Missing index for sub-predicate"
     | idx :: args ->
-        let*? idx', ss = validate_index s idx in
+        let*? idx', ss = get s idx in
         let+ ss' = S.produce pred ss args in
-        update_entry ~idx ~idx' ss' s
+        set ~idx ~idx' ss' s
 
   let compose = I.compose
   let is_exclusively_owned _ _ = Delayed.return false
@@ -195,25 +214,13 @@ struct
   type entry = S.t
   type t = S.t ExpMap.t [@@deriving yojson]
 
-  let pp fmt h =
-    Format.pp_open_vbox fmt 0;
-    Format.fprintf fmt "%a" (ExpMap.make_pp S.pp) h;
-    Format.pp_close_box fmt ()
-
   let empty = ExpMap.empty
   let fold = ExpMap.fold
   let for_all f = ExpMap.for_all (fun _ v -> f v)
+  let validate_index = I.is_valid_index
+  let get idx h = ExpMap.sym_find_opt h idx
 
-  let validate_index h idx =
-    let open Delayed.Syntax in
-    let* idx' = I.is_valid_index idx in
-    match idx' with
-    | None -> DO.none ()
-    | Some idx' ->
-        let+ match_val = ExpMap.sym_find_opt idx' h in
-        Some (Option.value ~default:(idx', S.empty ()) match_val)
-
-  let update_entry ~idx ~idx' s h =
+  let set ~idx ~idx' s h =
     if S.is_empty s then ExpMap.remove idx h
     else if Expr.equal idx idx' then ExpMap.add idx s h
     else ExpMap.remove idx h |> ExpMap.add idx' s
@@ -243,22 +250,6 @@ struct
   type entry = S.t
   type t = S.t ExpMap.t * S.t ExpMap.t [@@deriving yojson]
 
-  let pp fmt (ch, sh) =
-    let h =
-      ExpMap.union
-        (fun k sv cv ->
-          Logging.tmi (fun f ->
-              f
-                "Found clashing keys at %a in SplitPMap ?? Defaulting to \
-                 symbolic ! Values %a and %a"
-                Expr.pp k S.pp sv S.pp cv);
-          Some sv)
-        ch sh
-    in
-    Format.pp_open_vbox fmt 0;
-    Format.fprintf fmt "%a" (ExpMap.make_pp S.pp) h;
-    Format.pp_close_box fmt ()
-
   let empty = (ExpMap.empty, ExpMap.empty)
 
   let fold f (ch, sh) acc =
@@ -268,26 +259,24 @@ struct
   let for_all f (ch, sh) =
     ExpMap.for_all (fun _ v -> f v) ch && ExpMap.for_all (fun _ v -> f v) sh
 
-  let validate_index (ch, sh) idx =
-    let open Delayed.Syntax in
-    let* idx' = I.is_valid_index idx in
-    match idx' with
-    | None -> DO.none ()
-    | Some idx' -> (
-        (* This check might not be needed if we know idx' is not concrete *)
-        match ExpMap.find_opt idx' ch with
-        | Some v -> DO.some (idx', v)
-        | None -> (
-            match ExpMap.find_opt idx' sh with
-            | Some v -> DO.some (idx', v)
-            | None -> (
-                let merged = ExpMap.union (fun _ v1 _ -> Some v1) ch sh in
-                let* match_val = ExpMap.sym_find_opt idx' merged in
-                match match_val with
-                | Some (idx'', v) -> DO.some (idx'', v)
-                | None -> DO.some (idx', S.empty ()))))
+  let validate_index = I.is_valid_index
 
-  let update_entry ~idx ~idx' s (ch, sh) =
+  let get (ch, sh) idx =
+    let open Delayed.Syntax in
+    (* This check might not be needed if we know idx' is not concrete *)
+    match ExpMap.find_opt idx ch with
+    | Some v -> DO.some (idx, v)
+    | None -> (
+        match ExpMap.find_opt idx sh with
+        | Some v -> DO.some (idx, v)
+        | None -> (
+            let merged = ExpMap.union (fun _ v1 _ -> Some v1) ch sh in
+            let* match_val = ExpMap.sym_find_opt idx merged in
+            match match_val with
+            | Some (idx'', v) -> DO.some (idx'', v)
+            | None -> DO.none ()))
+
+  let set ~idx ~idx' s (ch, sh) =
     (* remove from both (dont know where it was) *)
     let ch', sh' = (ExpMap.remove idx ch, ExpMap.remove idx sh) in
     if S.is_empty s then (ch', sh')
@@ -334,13 +323,6 @@ module ALocImpl (S : MyMonadicSMemory.S) = struct
   type entry = S.t
   type t = S.t MyUtils.SMap.t [@@deriving yojson]
 
-  let pp fmt h =
-    Format.pp_open_vbox fmt 0;
-    Format.fprintf fmt "%a"
-      (MyUtils.pp_bindings ~pp_k:Fmt.string ~pp_v:S.pp SMap.iter)
-      h;
-    Format.pp_close_box fmt ()
-
   let empty = SMap.empty
   let fold f = SMap.fold (fun k v acc -> f (Expr.loc_from_loc_name k) v acc)
   let for_all f = SMap.for_all (fun _ v -> f v)
@@ -350,18 +332,18 @@ module ALocImpl (S : MyMonadicSMemory.S) = struct
     | Expr.ALoc loc -> loc
     | _ -> failwith "Non-trivial location given to get_loc_fast"
 
-  let validate_index h idx =
+  let validate_index idx =
     let open Delayed.Syntax in
-    let* idx_s = MyUtils.get_loc idx in
-    match idx_s with
-    | Some s ->
-        let idx_e = Expr.loc_from_loc_name s in
-        let res = SMap.find_opt s h in
-        let res = Option.value ~default:(S.empty ()) res in
-        DO.some (idx_e, res)
+    let+ idx_s = MyUtils.get_loc idx in
+    Option.map Expr.loc_from_loc_name idx_s
+
+  let get h idx =
+    let idx_s = get_loc_fast idx in
+    match SMap.find_opt idx_s h with
+    | Some v -> DO.some (idx, v)
     | None -> DO.none ()
 
-  let update_entry ~idx ~idx':_ s h =
+  let set ~idx ~idx':_ s h =
     let idx_s = get_loc_fast idx in
     if S.is_empty s then SMap.remove idx_s h else SMap.add idx_s s h
 
@@ -411,10 +393,3 @@ module ALocImpl (S : MyMonadicSMemory.S) = struct
       (Delayed.return substituted)
       aloc_subst
 end
-
-(* Types *)
-type 'e t_base_sat = 'e MyUtils.ExpMap.t
-type 'e t_base_ent = 'e MyUtils.ExpMapEnt.t
-type 'e t_split_sat = 'e MyUtils.ExpMap.t * 'e MyUtils.ExpMap.t
-type 'e t_split_ent = 'e MyUtils.ExpMapEnt.t * 'e MyUtils.ExpMapEnt.t
-type 'e t_aloc = 'e MyUtils.SMap.t
