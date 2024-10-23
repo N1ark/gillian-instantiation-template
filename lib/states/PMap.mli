@@ -3,17 +3,6 @@ open Gillian.Monadic
 
 type index_mode = Static | Dynamic
 
-module type PMapIndex = sig
-  val mode : index_mode
-  val is_valid_index : Expr.t -> Expr.t option Delayed.t
-  val make_fresh : unit -> Expr.t Delayed.t
-  val default_instantiation : Expr.t list
-end
-
-module LocationIndex : PMapIndex
-module StringIndex : PMapIndex
-module IntegerIndex : PMapIndex
-
 module type OpenPMapImpl = sig
   type entry
   type t [@@deriving yojson]
@@ -46,19 +35,30 @@ module type PMapType = sig
   val domain_add : Expr.t -> t -> t
 end
 
-module MakeOpenOfImpl
+module Make
+    (I_Cons : functor
+      (S : MyMonadicSMemory.S)
+      -> OpenPMapImpl with type entry = S.t)
+    (S : MyMonadicSMemory.S) :
+  PMapType with type entry = S.t and type t = I_Cons(S).t * Expr.t option
+
+module MakeOpen
     (I_Cons : functor
       (S : MyMonadicSMemory.S)
       -> OpenPMapImpl with type entry = S.t)
     (S : MyMonadicSMemory.S) :
   OpenPMapType with type entry = S.t and type t = I_Cons(S).t
 
-module MakeOfImpl
-    (I_Cons : functor
-      (S : MyMonadicSMemory.S)
-      -> OpenPMapImpl with type entry = S.t)
-    (S : MyMonadicSMemory.S) :
-  PMapType with type entry = S.t and type t = I_Cons(S).t * Expr.t option
+module type PMapIndex = sig
+  val mode : index_mode
+  val is_valid_index : Expr.t -> Expr.t option Delayed.t
+  val make_fresh : unit -> Expr.t Delayed.t
+  val default_instantiation : Expr.t list
+end
+
+module LocationIndex : PMapIndex
+module StringIndex : PMapIndex
+module IntegerIndex : PMapIndex
 
 type 'e t_base_sat := 'e MyUtils.ExpMap.t
 type 'e t_base_ent := 'e MyUtils.ExpMapEnt.t

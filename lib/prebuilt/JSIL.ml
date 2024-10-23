@@ -210,7 +210,7 @@ end
 
 (* Patch map pretty-printing for nicer diffs *)
 module PatchedBasePMap (S : MyMonadicSMemory) :
-  States.OpenPMap.OpenPMapType with type entry = S.t = struct
+  OpenPMapType with type entry = S.t = struct
   include OpenPMap (LocationIndex) (S)
 
   let pp ft (h : t) =
@@ -244,7 +244,7 @@ end
    Need to take that into consideration + similarly to WISL, return the index on each action. *)
 module PatchAlloc
     (Obj : MyMonadicSMemory)
-    (Map : States.OpenPMap.OpenPMapType with type entry = Obj.t) =
+    (Map : OpenPMapType with type entry = Obj.t) =
 struct
   include Map
   module SS = Gillian.Utils.Containers.SS
@@ -279,7 +279,7 @@ module SplitObject = BaseMemoryContent (PatchDomainsetObject (SplitObjectBase))
 
 module Wrap
     (Obj : MyMonadicSMemory)
-    (Map : States.OpenPMap.OpenPMapType with type entry = Obj.t) =
+    (Map : OpenPMapType with type entry = Obj.t) =
   Filter (JSFilter) (Mapper (JSSubst) (PatchAlloc (Obj) (Map)))
 
 (* Actual exports *)

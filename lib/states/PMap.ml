@@ -6,78 +6,6 @@ module DO = Delayed_option
 
 type index_mode = Static | Dynamic
 
-(**
-  Type for the domain of a PMap.
-  Allows configuring it to either have static or dynamic indexing:
-  - Static: indexes are created by the memory model on allocation (eg. the heap in C)
-  - Dynamic: indexes are given by the user on allocation (eg. objects in JS)
-
-  The user must provide the index on allocation in dynamic mode, and mustn't provide it in static mode.
-  is_valid_index must always be implemented, while make_fresh is only needed in static mode.
-*)
-module type PMapIndex = sig
-  val mode : index_mode
-
-  (** If the given expression is a valid index for the map.
-      Returns a possibly simplified index, and None if it's not valid.  *)
-  val is_valid_index : Expr.t -> Expr.t option Delayed.t
-
-  (** Creates a new address, for allocating new state. Only used in static mode *)
-  val make_fresh : unit -> Expr.t Delayed.t
-
-  (** The arguments used when instantiating new state. Only used in dynamic mode *)
-  val default_instantiation : Expr.t list
-end
-
-module LocationIndex : PMapIndex = struct
-  let mode = Static
-
-  let make_fresh () =
-    let loc = ALoc.alloc () in
-    Expr.loc_from_loc_name loc |> Delayed.return
-
-  let is_valid_index e =
-    Delayed_option.map (MyUtils.get_loc e) Expr.loc_from_loc_name
-
-  let default_instantiation = []
-end
-
-module StringIndex : PMapIndex = struct
-  let mode = Dynamic
-
-  let is_valid_index = function
-    | l -> Delayed.return (Some l)
-
-  let make_fresh () = failwith "Invalid in dynamic mode"
-  let default_instantiation = []
-end
-
-module IntegerIndex : PMapIndex = struct
-  open Formula.Infix
-  open Expr.Infix
-
-  let mode = Static
-  let last_index = ref None
-
-  let make_fresh () =
-    let lvar = LVar.alloc () in
-    let e = Expr.LVar lvar in
-    let learnt =
-      match !last_index with
-      | None -> []
-      | Some last -> [ e #== (last + Expr.int 1) ]
-    in
-    last_index := Some e;
-    Delayed.return ~learned:learnt
-      ~learned_types:[ (lvar, Type.IntType) ]
-      (Expr.LVar lvar)
-
-  let is_valid_index = function
-    | l -> Delayed.return (Some l)
-
-  let default_instantiation = []
-end
-
 module type OpenPMapImpl = sig
   type entry
   type t [@@deriving yojson]
@@ -135,164 +63,7 @@ module type PMapType = sig
   val domain_add : Expr.t -> t -> t
 end
 
-module MakeOpenOfImpl
-    (I_Cons : functor
-      (S : MyMonadicSMemory.S)
-      -> OpenPMapImpl with type entry = S.t)
-    (S : MyMonadicSMemory.S) =
-struct
-  module I = I_Cons (S)
-
-  let () =
-    if I.mode = Dynamic then failwith "Dynamic mode not supported for OpenPMap"
-
-  type entry = S.t
-  type t = I.t [@@deriving yojson]
-
-  let pp fmt (h : t) =
-    let iter f h = I.fold (fun k v () -> f k v) h () in
-    Format.pp_open_vbox fmt 0;
-    MyUtils.pp_bindings ~pp_k:Expr.pp ~pp_v:S.pp iter fmt h;
-    Format.pp_close_box fmt ()
-
-  type err_t =
-    | InvalidIndexValue of Expr.t
-    | SubError of
-        Expr.t * Expr.t * S.err_t (* Original index, map index, error *)
-  [@@deriving show, yojson]
-
-  type action = Alloc | SubAction of S.action
-
-  let action_from_str = function
-    | "alloc" -> Some Alloc
-    | s -> Option.map (fun a -> SubAction a) (S.action_from_str s)
-
-  let action_to_str = function
-    | SubAction a -> S.action_to_str a
-    | Alloc -> "alloc"
-
-  let list_actions () =
-    [ (Alloc, [ "params" ], [ "address" ]) ]
-    @ List.map
-        (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
-        (S.list_actions ())
-
-  type pred = S.pred
-
-  let pred_from_str = S.pred_from_str
-  let pred_to_str = S.pred_to_str
-
-  let list_preds () =
-    List.map (fun (p, ins, outs) -> (p, "index" :: ins, outs)) (S.list_preds ())
-
-  let get s idx =
-    let open Delayed.Syntax in
-    let* idx_opt = I.validate_index idx in
-    match idx_opt with
-    | None -> DR.error (InvalidIndexValue idx)
-    | Some idx' -> (
-        let* res = I.get s idx' in
-        match res with
-        | None -> DR.ok (idx', S.empty ())
-        | Some res -> DR.ok res)
-
-  let set = I.set
-
-  let lifting_err idx idx' v fn =
-    match v with
-    | Ok v -> Ok (fn v)
-    | Error e -> Error (SubError (idx, idx', e))
-
-  let empty () : t = I.empty
-
-  let execute_action action (s : t) args =
-    let open Delayed.Syntax in
-    let open DR.Syntax in
-    match (action, args) with
-    | SubAction _, [] -> failwith "Missing index for sub-action"
-    | SubAction action, idx :: args ->
-        let** idx', ss = get s idx in
-        let+ r = S.execute_action action ss args in
-        let ( let+^ ) = lifting_err idx idx' in
-        let+^ ss', v = r in
-        let s' = set ~idx ~idx' ss' s in
-        (s', idx' :: v)
-    | Alloc, args ->
-        let* idx = I.make_fresh () in
-        let ss, v = S.instantiate args in
-        let s' = set ~idx ~idx':idx ss s in
-        DR.ok (s', idx :: v)
-
-  let consume pred s ins =
-    let open Delayed.Syntax in
-    let open DR.Syntax in
-    match ins with
-    | [] -> failwith "Missing index for sub-predicate"
-    | idx :: ins ->
-        let** idx', ss = get s idx in
-        let+ r = S.consume pred ss ins in
-        let ( let+^ ) = lifting_err idx idx' in
-        let+^ ss', v = r in
-        let s' = set ~idx ~idx' ss' s in
-        (s', v)
-
-  let produce pred s args =
-    let open Delayed.Syntax in
-    let open MyUtils.Syntax in
-    match args with
-    | [] -> failwith "Missing index for sub-predicate"
-    | idx :: args ->
-        let*? idx', ss = get s idx in
-        let+ ss' = S.produce pred ss args in
-        set ~idx ~idx' ss' s
-
-  let compose = I.compose
-  let is_exclusively_owned _ _ = Delayed.return false
-  let is_empty = I.for_all S.is_empty
-  let is_concrete = I.for_all S.is_concrete
-
-  let instantiate = function
-    | [] -> (I.empty, [])
-    | _ -> failwith "Invalid arguments for instantiation"
-
-  let substitution_in_place = I.substitution_in_place
-
-  let accumulate ~fn_k ~fn_v h =
-    let open Utils.Containers.SS in
-    I.fold (fun k s acc -> fn_v s |> union @@ fn_k k |> union acc) h empty
-
-  let lvars = accumulate ~fn_k:Expr.lvars ~fn_v:S.lvars
-  let alocs = accumulate ~fn_k:Expr.alocs ~fn_v:S.alocs
-  let lift_corepred k (p, i, o) = (p, k :: i, o)
-
-  let assertions h =
-    I.fold
-      (fun k s acc -> List.map (lift_corepred k) (S.assertions s) @ acc)
-      h []
-
-  let assertions_others h =
-    I.fold (fun _ s acc -> S.assertions_others s @ acc) h []
-
-  let get_recovery_tactic = function
-    | SubError (_, idx, e) ->
-        Gillian.General.Recovery_tactic.merge (S.get_recovery_tactic e)
-          (Gillian.General.Recovery_tactic.try_unfold [ idx ])
-    | InvalidIndexValue idx ->
-        Gillian.General.Recovery_tactic.try_unfold [ idx ]
-
-  let can_fix = function
-    | SubError (_, _, e) -> S.can_fix e
-    | InvalidIndexValue _ -> false
-
-  let get_fixes = function
-    | SubError (idx, idx', e) ->
-        S.get_fixes e
-        |> MyUtils.deep_map @@ MyAsrt.map_cp @@ lift_corepred idx'
-        |> List.map @@ List.cons @@ Formula.Infix.(MyAsrt.Pure idx #== idx')
-    | _ -> failwith "Called get_fixes on unfixable error"
-end
-
-module MakeOfImpl
+module Make
     (I_Cons : functor
       (S : MyMonadicSMemory.S)
       -> OpenPMapImpl with type entry = S.t)
@@ -568,6 +339,235 @@ struct
           ];
         ]
     | _ -> failwith "Called get_fixes on unfixable error"
+end
+
+module MakeOpen
+    (I_Cons : functor
+      (S : MyMonadicSMemory.S)
+      -> OpenPMapImpl with type entry = S.t)
+    (S : MyMonadicSMemory.S) =
+struct
+  module I = I_Cons (S)
+
+  let () =
+    if I.mode = Dynamic then failwith "Dynamic mode not supported for OpenPMap"
+
+  type entry = S.t
+  type t = I.t [@@deriving yojson]
+
+  let pp fmt (h : t) =
+    let iter f h = I.fold (fun k v () -> f k v) h () in
+    Format.pp_open_vbox fmt 0;
+    MyUtils.pp_bindings ~pp_k:Expr.pp ~pp_v:S.pp iter fmt h;
+    Format.pp_close_box fmt ()
+
+  type err_t =
+    | InvalidIndexValue of Expr.t
+    | SubError of
+        Expr.t * Expr.t * S.err_t (* Original index, map index, error *)
+  [@@deriving show, yojson]
+
+  type action = Alloc | SubAction of S.action
+
+  let action_from_str = function
+    | "alloc" -> Some Alloc
+    | s -> Option.map (fun a -> SubAction a) (S.action_from_str s)
+
+  let action_to_str = function
+    | SubAction a -> S.action_to_str a
+    | Alloc -> "alloc"
+
+  let list_actions () =
+    [ (Alloc, [ "params" ], [ "address" ]) ]
+    @ List.map
+        (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
+        (S.list_actions ())
+
+  type pred = S.pred
+
+  let pred_from_str = S.pred_from_str
+  let pred_to_str = S.pred_to_str
+
+  let list_preds () =
+    List.map (fun (p, ins, outs) -> (p, "index" :: ins, outs)) (S.list_preds ())
+
+  let get s idx =
+    let open Delayed.Syntax in
+    let* idx_opt = I.validate_index idx in
+    match idx_opt with
+    | None -> DR.error (InvalidIndexValue idx)
+    | Some idx' -> (
+        let* res = I.get s idx' in
+        match res with
+        | None -> DR.ok (idx', S.empty ())
+        | Some res -> DR.ok res)
+
+  let set = I.set
+
+  let lifting_err idx idx' v fn =
+    match v with
+    | Ok v -> Ok (fn v)
+    | Error e -> Error (SubError (idx, idx', e))
+
+  let empty () : t = I.empty
+
+  let execute_action action (s : t) args =
+    let open Delayed.Syntax in
+    let open DR.Syntax in
+    match (action, args) with
+    | SubAction _, [] -> failwith "Missing index for sub-action"
+    | SubAction action, idx :: args ->
+        let** idx', ss = get s idx in
+        let+ r = S.execute_action action ss args in
+        let ( let+^ ) = lifting_err idx idx' in
+        let+^ ss', v = r in
+        let s' = set ~idx ~idx' ss' s in
+        (s', idx' :: v)
+    | Alloc, args ->
+        let* idx = I.make_fresh () in
+        let ss, v = S.instantiate args in
+        let s' = set ~idx ~idx':idx ss s in
+        DR.ok (s', idx :: v)
+
+  let consume pred s ins =
+    let open Delayed.Syntax in
+    let open DR.Syntax in
+    match ins with
+    | [] -> failwith "Missing index for sub-predicate"
+    | idx :: ins ->
+        let** idx', ss = get s idx in
+        let+ r = S.consume pred ss ins in
+        let ( let+^ ) = lifting_err idx idx' in
+        let+^ ss', v = r in
+        let s' = set ~idx ~idx' ss' s in
+        (s', v)
+
+  let produce pred s args =
+    let open Delayed.Syntax in
+    let open MyUtils.Syntax in
+    match args with
+    | [] -> failwith "Missing index for sub-predicate"
+    | idx :: args ->
+        let*? idx', ss = get s idx in
+        let+ ss' = S.produce pred ss args in
+        set ~idx ~idx' ss' s
+
+  let compose = I.compose
+  let is_exclusively_owned _ _ = Delayed.return false
+  let is_empty = I.for_all S.is_empty
+  let is_concrete = I.for_all S.is_concrete
+
+  let instantiate = function
+    | [] -> (I.empty, [])
+    | _ -> failwith "Invalid arguments for instantiation"
+
+  let substitution_in_place = I.substitution_in_place
+
+  let accumulate ~fn_k ~fn_v h =
+    let open Utils.Containers.SS in
+    I.fold (fun k s acc -> fn_v s |> union @@ fn_k k |> union acc) h empty
+
+  let lvars = accumulate ~fn_k:Expr.lvars ~fn_v:S.lvars
+  let alocs = accumulate ~fn_k:Expr.alocs ~fn_v:S.alocs
+  let lift_corepred k (p, i, o) = (p, k :: i, o)
+
+  let assertions h =
+    I.fold
+      (fun k s acc -> List.map (lift_corepred k) (S.assertions s) @ acc)
+      h []
+
+  let assertions_others h =
+    I.fold (fun _ s acc -> S.assertions_others s @ acc) h []
+
+  let get_recovery_tactic = function
+    | SubError (_, idx, e) ->
+        Gillian.General.Recovery_tactic.merge (S.get_recovery_tactic e)
+          (Gillian.General.Recovery_tactic.try_unfold [ idx ])
+    | InvalidIndexValue idx ->
+        Gillian.General.Recovery_tactic.try_unfold [ idx ]
+
+  let can_fix = function
+    | SubError (_, _, e) -> S.can_fix e
+    | InvalidIndexValue _ -> false
+
+  let get_fixes = function
+    | SubError (idx, idx', e) ->
+        S.get_fixes e
+        |> MyUtils.deep_map @@ MyAsrt.map_cp @@ lift_corepred idx'
+        |> List.map @@ List.cons @@ Formula.Infix.(MyAsrt.Pure idx #== idx')
+    | _ -> failwith "Called get_fixes on unfixable error"
+end
+
+(**
+  Type for the domain of a PMap.
+  Allows configuring it to either have static or dynamic indexing:
+  - Static: indexes are created by the memory model on allocation (eg. the heap in C)
+  - Dynamic: indexes are given by the user on allocation (eg. objects in JS)
+
+  The user must provide the index on allocation in dynamic mode, and mustn't provide it in static mode.
+  is_valid_index must always be implemented, while make_fresh is only needed in static mode.
+*)
+module type PMapIndex = sig
+  val mode : index_mode
+
+  (** If the given expression is a valid index for the map.
+      Returns a possibly simplified index, and None if it's not valid.  *)
+  val is_valid_index : Expr.t -> Expr.t option Delayed.t
+
+  (** Creates a new address, for allocating new state. Only used in static mode *)
+  val make_fresh : unit -> Expr.t Delayed.t
+
+  (** The arguments used when instantiating new state. Only used in dynamic mode *)
+  val default_instantiation : Expr.t list
+end
+
+module LocationIndex : PMapIndex = struct
+  let mode = Static
+
+  let make_fresh () =
+    let loc = ALoc.alloc () in
+    Expr.loc_from_loc_name loc |> Delayed.return
+
+  let is_valid_index e =
+    Delayed_option.map (MyUtils.get_loc e) Expr.loc_from_loc_name
+
+  let default_instantiation = []
+end
+
+module StringIndex : PMapIndex = struct
+  let mode = Dynamic
+
+  let is_valid_index = function
+    | l -> Delayed.return (Some l)
+
+  let make_fresh () = failwith "Invalid in dynamic mode"
+  let default_instantiation = []
+end
+
+module IntegerIndex : PMapIndex = struct
+  open Formula.Infix
+  open Expr.Infix
+
+  let mode = Static
+  let last_index = ref None
+
+  let make_fresh () =
+    let lvar = LVar.alloc () in
+    let e = Expr.LVar lvar in
+    let learnt =
+      match !last_index with
+      | None -> []
+      | Some last -> [ e #== (last + Expr.int 1) ]
+    in
+    last_index := Some e;
+    Delayed.return ~learned:learnt
+      ~learned_types:[ (lvar, Type.IntType) ]
+      (Expr.LVar lvar)
+
+  let is_valid_index = function
+    | l -> Delayed.return (Some l)
+
+  let default_instantiation = []
 end
 
 (** "Base" implementation of an open PMap, with no particular optimisation.

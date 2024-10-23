@@ -7,10 +7,12 @@ module type IDs = MyUtils.IDs
 module type Injection = Injector.Injection
 module type NameMap = Mapper.NameMap
 module type MyMonadicSMemory = MyMonadicSMemory.S
-module type PMapIndex = OpenPMap.PMapIndex
+module type PMapIndex = PMap.PMapIndex
+module type PMapType = PMap.PMapType
+module type OpenPMapType = PMap.OpenPMapType
 
 type filter_mode = Filter.filter_mode
-type index_mode = OpenPMap.index_mode
+type index_mode = PMap.index_mode
 
 (* Helpers *)
 module DummyInject = Injector.DummyInject
@@ -21,9 +23,9 @@ module IDs : IDs = struct
 end
 
 (* Indices *)
-module LocationIndex = OpenPMap.LocationIndex
-module IntegerIndex = OpenPMap.IntegerIndex
-module StringIndex = OpenPMap.StringIndex
+module LocationIndex = PMap.LocationIndex
+module IntegerIndex = PMap.IntegerIndex
+module StringIndex = PMap.StringIndex
 
 (* Leaves *)
 module Agreement = Agreement
@@ -42,15 +44,9 @@ module Product = Product.Make
 module Sum = Sum.Make
 
 (* PMaps *)
-module ALocPMap = OpenPMap.MakeOfImpl (OpenPMap.ALocImpl)
-module PMap (I : PMapIndex) = OpenPMap.MakeOfImpl (OpenPMap.BaseImplSat (I))
-
-module SplitPMap (I : PMapIndex) = OpenPMap.MakeOfImpl (OpenPMap.SplitImplSat (I))
-
-module OpenALocPMap = OpenPMap.MakeOpenOfImpl (OpenPMap.ALocImpl)
-
-module OpenSplitPMap (I : PMapIndex) =
-  OpenPMap.MakeOpenOfImpl (OpenPMap.SplitImplSat (I))
-
-module OpenPMap (I : PMapIndex) =
-  OpenPMap.MakeOpenOfImpl (OpenPMap.BaseImplSat (I))
+module ALocPMap = PMap.Make (PMap.ALocImpl)
+module SplitPMap (I : PMapIndex) = PMap.Make (PMap.SplitImplSat (I))
+module OpenALocPMap = PMap.MakeOpen (PMap.ALocImpl)
+module OpenSplitPMap (I : PMapIndex) = PMap.MakeOpen (PMap.SplitImplSat (I))
+module OpenPMap (I : PMapIndex) = PMap.MakeOpen (PMap.BaseImplSat (I))
+module PMap (I : PMapIndex) = PMap.Make (PMap.BaseImplSat (I))

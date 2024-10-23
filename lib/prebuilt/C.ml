@@ -11,8 +11,7 @@ module CGEnv = C_states.CGEnv.M
 (* Base memories *)
 module BaseBlock = Freeable (BlockTree)
 
-module type C_PMapType =
-  States.OpenPMap.OpenPMapType with type entry = BaseBlock.t
+module type C_PMapType = OpenPMapType with type entry = BaseBlock.t
 
 module BaseMemory : C_PMapType = OpenPMap (LocationIndex) (BaseBlock)
 module SplitMemory : C_PMapType = OpenSplitPMap (LocationIndex) (BaseBlock)
