@@ -185,7 +185,7 @@ end
 module SplitObjectBase = struct
   include SplitPMap (StringIndex) (Exclusive)
 
-  let pp ft ((ch, sh, d) : t) =
+  let pp ft (((ch, sh), d) : t) =
     let h = ExpMap.union (fun _ a _ -> Some a) ch sh in
     let d =
       match d with
@@ -199,7 +199,7 @@ module SplitObjectBase = struct
     in
     pf ft "[ @[%a@] | @[%a@] ]" pp_bindings h (option Expr.pp) d
 
-  let is_not_nono (ch, sh, _) idx =
+  let is_not_nono ((ch, sh), _) idx =
     match ExpMap.find_opt idx ch with
     | Some (Some (Expr.Lit Nono)) -> false
     | _ -> (

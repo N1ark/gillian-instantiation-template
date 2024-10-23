@@ -3,7 +3,7 @@ open States
 (* open Prebuilt.Utils*)
 
 (* Select prebuilt mode (or build one!) *)
-module Prebuilt = Prebuilt.Lib.C_Base
+module Prebuilt = Prebuilt.Lib.WISL_Base
 
 (* state model: *)
 module MyMem = Prebuilt.MonadicSMemory

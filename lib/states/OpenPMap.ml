@@ -4,13 +4,91 @@ module Subst = Gillian.Symbolic.Subst
 module DR = Delayed_result
 module DO = Delayed_option
 
+type index_mode = Static | Dynamic
+
+(**
+  Type for the domain of a PMap.
+  Allows configuring it to either have static or dynamic indexing:
+  - Static: indexes are created by the memory model on allocation (eg. the heap in C)
+  - Dynamic: indexes are given by the user on allocation (eg. objects in JS)
+
+  The user must provide the index on allocation in dynamic mode, and mustn't provide it in static mode.
+  is_valid_index must always be implemented, while make_fresh is only needed in static mode.
+*)
+module type PMapIndex = sig
+  val mode : index_mode
+
+  (** If the given expression is a valid index for the map.
+      Returns a possibly simplified index, and None if it's not valid.  *)
+  val is_valid_index : Expr.t -> Expr.t option Delayed.t
+
+  (** Creates a new address, for allocating new state. Only used in static mode *)
+  val make_fresh : unit -> Expr.t Delayed.t
+
+  (** The arguments used when instantiating new state. Only used in dynamic mode *)
+  val default_instantiation : Expr.t list
+end
+
+module LocationIndex : PMapIndex = struct
+  let mode = Static
+
+  let make_fresh () =
+    let loc = ALoc.alloc () in
+    Expr.loc_from_loc_name loc |> Delayed.return
+
+  let is_valid_index e =
+    Delayed_option.map (MyUtils.get_loc e) Expr.loc_from_loc_name
+
+  let default_instantiation = []
+end
+
+module StringIndex : PMapIndex = struct
+  let mode = Dynamic
+
+  let is_valid_index = function
+    | l -> Delayed.return (Some l)
+
+  let make_fresh () = failwith "Invalid in dynamic mode"
+  let default_instantiation = []
+end
+
+module IntegerIndex : PMapIndex = struct
+  open Formula.Infix
+  open Expr.Infix
+
+  let mode = Static
+  let last_index = ref None
+
+  let make_fresh () =
+    let lvar = LVar.alloc () in
+    let e = Expr.LVar lvar in
+    let learnt =
+      match !last_index with
+      | None -> []
+      | Some last -> [ e #== (last + Expr.int 1) ]
+    in
+    last_index := Some e;
+    Delayed.return ~learned:learnt
+      ~learned_types:[ (lvar, Type.IntType) ]
+      (Expr.LVar lvar)
+
+  let is_valid_index = function
+    | l -> Delayed.return (Some l)
+
+  let default_instantiation = []
+end
+
 module type OpenPMapImpl = sig
   type entry
   type t [@@deriving yojson]
 
-  val empty : t
-  val fold : (Expr.t -> entry -> 'a -> 'a) -> t -> 'a -> 'a
-  val for_all : (entry -> bool) -> t -> bool
+  val mode : index_mode
+
+  (** Creates a new address, for allocating new state. Only used in static mode *)
+  val make_fresh : unit -> Expr.t Delayed.t
+
+  (** The arguments used when instantiating new state. Only used in dynamic mode *)
+  val default_instantiation : Expr.t list
 
   (* Note for the below two functions we use option Delayed rather than
      result Delayed, to avoid the headache of handling additional errors. *)
@@ -35,6 +113,9 @@ module type OpenPMapImpl = sig
       `idx` and `idx'` can be equal, in which case the state is just added/updated. *)
   val set : idx:Expr.t -> idx':Expr.t -> entry -> t -> t
 
+  val empty : t
+  val fold : (Expr.t -> entry -> 'a -> 'a) -> t -> 'a -> 'a
+  val for_all : (entry -> bool) -> t -> bool
   val compose : t -> t -> t Delayed.t
   val substitution_in_place : Subst.t -> t -> t Delayed.t
 end
@@ -48,13 +129,22 @@ module type OpenPMapType = sig
   val set : idx:Expr.t -> idx':Expr.t -> entry -> t -> t
 end
 
-module MakeOfImpl
+module type PMapType = sig
+  include OpenPMapType
+
+  val domain_add : Expr.t -> t -> t
+end
+
+module MakeOpenOfImpl
     (I_Cons : functor
       (S : MyMonadicSMemory.S)
       -> OpenPMapImpl with type entry = S.t)
     (S : MyMonadicSMemory.S) =
 struct
   module I = I_Cons (S)
+
+  let () =
+    if I.mode = Dynamic then failwith "Dynamic mode not supported for OpenPMap"
 
   type entry = S.t
   type t = I.t [@@deriving yojson]
@@ -128,7 +218,7 @@ struct
         let s' = set ~idx ~idx' ss' s in
         (s', idx' :: v)
     | Alloc, args ->
-        let idx = Expr.ALoc (ALoc.alloc ()) in
+        let* idx = I.make_fresh () in
         let ss, v = S.instantiate args in
         let s' = set ~idx ~idx':idx ss s in
         DR.ok (s', idx :: v)
@@ -202,18 +292,299 @@ struct
     | _ -> failwith "Called get_fixes on unfixable error"
 end
 
+module MakeOfImpl
+    (I_Cons : functor
+      (S : MyMonadicSMemory.S)
+      -> OpenPMapImpl with type entry = S.t)
+    (S : MyMonadicSMemory.S) =
+struct
+  module I = I_Cons (S)
+
+  type entry = S.t
+  type t = I.t * Expr.t option [@@deriving yojson]
+
+  let pp fmt ((h, d) : t) =
+    let iter f h = I.fold (fun k v () -> f k v) h () in
+    Format.pp_open_vbox fmt 0;
+    MyUtils.pp_bindings ~pp_k:Expr.pp ~pp_v:S.pp iter fmt h;
+    Format.pp_close_box fmt ();
+    match d with
+    | None -> Format.fprintf fmt "@\nDomainSet: None"
+    | Some (Expr.ESet l) ->
+        let l' = List.sort Expr.compare l in
+        Format.fprintf fmt "@\nDomainSet: -{ %a }-"
+          (Fmt.list ~sep:Fmt.comma Expr.pp)
+          l'
+    | Some d ->
+        (* shouldn't happen *)
+        Format.fprintf fmt "@\nDomainSet: %a" Expr.pp d
+
+  type err_t =
+    | NotAllocated of Expr.t
+    | InvalidIndexValue of Expr.t
+    | MissingDomainSet
+    | DomainSetNotFullyOwned
+    | SubError of
+        Expr.t * Expr.t * S.err_t (* Original index, map index, error *)
+  [@@deriving show, yojson]
+
+  type action = Alloc | GetDomainSet | SubAction of S.action
+
+  let action_from_str = function
+    | "alloc" -> Some Alloc
+    | "get_domainset" -> Some GetDomainSet
+    | s -> Option.map (fun a -> SubAction a) (S.action_from_str s)
+
+  let action_to_str = function
+    | SubAction a -> S.action_to_str a
+    | Alloc -> "alloc"
+    | GetDomainSet -> "get_domainset"
+
+  let list_actions () =
+    (match I.mode with
+    | Static -> [ (Alloc, [ "params" ], [ "address" ]) ]
+    | Dynamic -> [])
+    @ [ (GetDomainSet, [], [ "domainset" ]) ]
+    @ List.map
+        (fun (a, args, ret) -> (SubAction a, "index" :: args, ret))
+        (S.list_actions ())
+
+  type pred = DomainSet | SubPred of S.pred
+
+  let pred_from_str = function
+    | "domainset" -> Some DomainSet
+    | s -> Option.map (fun p -> SubPred p) (S.pred_from_str s)
+
+  let pred_to_str = function
+    | SubPred p -> S.pred_to_str p
+    | DomainSet -> "domainset"
+
+  let list_preds () =
+    (DomainSet, [], [ "domainset" ])
+    :: List.map
+         (fun (p, ins, outs) -> (SubPred p, "index" :: ins, outs))
+         (S.list_preds ())
+
+  let get (h, d) idx =
+    let open Delayed.Syntax in
+    let* idx_opt = I.validate_index idx in
+    match idx_opt with
+    | None -> DR.error (InvalidIndexValue idx)
+    | Some idx' -> (
+        let* res = I.get h idx' in
+        match (res, d) with
+        | Some res, _ -> DR.ok res
+        | None, None -> DR.ok (idx', S.empty ())
+        | None, Some d ->
+            if%sat Formula.SetMem (idx', d) then DR.ok (idx', S.empty ())
+            else DR.error (NotAllocated idx'))
+
+  let set ~idx ~idx' entry ((h, d) : t) = (I.set ~idx ~idx' entry h, d)
+
+  let domain_add k ((h, d) : t) =
+    match d with
+    | None -> (h, d)
+    | Some (Expr.ESet d) -> (h, Some (Expr.ESet (k :: d)))
+    | Some _ ->
+        (* Currently we only support "concrete" domain sets (ie. using Expr.ESet, instead of
+           as logical variables). To add support to "symbolic" domain sets one would need
+           to make this function return a Expr.t Delayed.t, adding to the PC that the key is in
+           the set. *)
+        failwith "Invalid index set; expected a set"
+
+  let lifting_err idx idx' v fn =
+    match v with
+    | Ok v -> Ok (fn v)
+    | Error e -> Error (SubError (idx, idx', e))
+
+  let empty () : t = (I.empty, None)
+
+  let execute_action action (s : t) args =
+    let open Delayed.Syntax in
+    let open DR.Syntax in
+    match (action, args) with
+    | SubAction _, [] -> failwith "Missing index for sub-action"
+    | SubAction action, idx :: args ->
+        let** idx', ss = get s idx in
+        let+ r = S.execute_action action ss args in
+        let ( let+^ ) = lifting_err idx idx' in
+        let+^ ss', v = r in
+        let s' = set ~idx ~idx' ss' s in
+        (s', idx' :: v)
+    | Alloc, args ->
+        if I.mode = Dynamic then
+          failwith "Alloc not allowed using dynamic indexing";
+        let* idx = I.make_fresh () in
+        let ss, v = S.instantiate args in
+        let s' = set ~idx ~idx':idx ss s |> domain_add idx in
+        DR.ok (s', idx :: v)
+    | GetDomainSet, [] -> (
+        match s with
+        (* Implementation taken from JSIL:
+           - ensure domain set is there
+           - ensure the domain set is exactly the set of keys in the map
+           - filter keys to remove empty cells (for JS: Nono)
+           - return as a list *)
+        | h, Some d ->
+            let keys = I.fold (fun k _ acc -> k :: acc) h [] in
+            if%ent Formula.Infix.(d #== (Expr.ESet keys)) then
+              let keys =
+                I.fold
+                  (fun k v acc -> if S.is_empty v then acc else k :: acc)
+                  h []
+              in
+              DR.ok (s, [ Expr.list keys ])
+            else DR.error DomainSetNotFullyOwned
+        | _, None -> DR.error MissingDomainSet)
+    | GetDomainSet, _ -> failwith "Invalid arguments for get_domainset"
+
+  let consume pred s ins =
+    let open Delayed.Syntax in
+    let open DR.Syntax in
+    match (pred, ins) with
+    | SubPred _, [] -> failwith "Missing index for sub-predicate"
+    | SubPred pred, idx :: ins ->
+        let** idx', ss = get s idx in
+        let+ r = S.consume pred ss ins in
+        let ( let+^ ) = lifting_err idx idx' in
+        let+^ ss', v = r in
+        let s' = set ~idx ~idx' ss' s in
+        (s', v)
+    | DomainSet, [] -> (
+        match s with
+        | h, Some d -> DR.ok ((h, None), [ d ])
+        | _, None -> DR.error MissingDomainSet)
+    | DomainSet, _ -> failwith "Invalid number of ins for domainset"
+
+  let produce pred s args =
+    let open Delayed.Syntax in
+    let open MyUtils.Syntax in
+    match (pred, args) with
+    | SubPred _, [] -> failwith "Missing index for sub-predicate"
+    | SubPred pred, idx :: args ->
+        let*? idx', ss = get s idx in
+        let+ ss' = S.produce pred ss args in
+        set ~idx ~idx' ss' s
+    | DomainSet, [ d' ] -> (
+        match s with
+        | _, Some _ -> Delayed.vanish ()
+        | h, None ->
+            (* This would be the correct implementation, but the handling of sets is bad so
+               it creates all sorts of issues (eg. in matching plans)...
+               let dom = ExpMap.bindings h |> List.map fst in
+               let dom = Expr.ESet dom in*)
+            Delayed.return (*~learned:[ Formula.SetSub (dom, d') ]*) (h, Some d')
+        )
+    | DomainSet, _ -> failwith "Invalid arguments for domainset produce"
+
+  let compose (h1, d1) (h2, d2) =
+    let open Delayed.Syntax in
+    match (d1, d2) with
+    | None, d | d, None ->
+        let+ h = I.compose h1 h2 in
+        (h, d)
+    | Some _, Some _ -> Delayed.vanish ()
+
+  let is_exclusively_owned _ _ = Delayed.return false
+
+  let is_empty = function
+    | _, Some _ -> false
+    | h, None -> I.for_all S.is_empty h
+
+  let is_concrete = function
+    | h, Some d -> Expr.is_concrete d && I.for_all S.is_concrete h
+    | h, None -> I.for_all S.is_concrete h
+
+  let instantiate = function
+    | [] -> ((I.empty, Some (Expr.ESet [])), [])
+    | [ Expr.EList fields ] ->
+        let ss, _ = S.instantiate [] in
+        let h =
+          List.fold_left
+            (fun acc k -> I.set ~idx:k ~idx':k ss acc)
+            I.empty fields
+        in
+        let d = Expr.ESet fields in
+        ((h, Some d), [])
+    | _ -> failwith "Invalid arguments for instantiation"
+
+  let substitution_in_place sub (h, d) =
+    let open Delayed.Syntax in
+    let d' = Option.map (Subst.subst_in_expr sub ~partial:true) d in
+    let+ h' = I.substitution_in_place sub h in
+    (h', d')
+
+  let accumulate ~fn_k ~fn_v h =
+    let open Utils.Containers.SS in
+    I.fold (fun k s acc -> fn_v s |> union @@ fn_k k |> union acc) h empty
+
+  let lvars (h, d) =
+    let open Utils.Containers.SS in
+    accumulate ~fn_k:Expr.lvars ~fn_v:S.lvars h
+    |> union @@ Option.fold ~none:empty ~some:Expr.lvars d
+
+  let alocs (h, d) =
+    let open Utils.Containers.SS in
+    accumulate ~fn_k:Expr.alocs ~fn_v:S.alocs h
+    |> union @@ Option.fold ~none:empty ~some:Expr.alocs d
+
+  let lift_corepred k (p, i, o) = (SubPred p, k :: i, o)
+
+  let assertions (h, d) =
+    I.fold
+      (fun k s acc -> List.map (lift_corepred k) (S.assertions s) @ acc)
+      h []
+    @ Option.fold ~none:[] ~some:(fun d -> [ (DomainSet, [], [ d ]) ]) d
+
+  let assertions_others (h, _) =
+    I.fold (fun _ s acc -> S.assertions_others s @ acc) h []
+
+  let get_recovery_tactic = function
+    | SubError (_, idx, e) ->
+        Gillian.General.Recovery_tactic.merge (S.get_recovery_tactic e)
+          (Gillian.General.Recovery_tactic.try_unfold [ idx ])
+    | NotAllocated idx | InvalidIndexValue idx ->
+        Gillian.General.Recovery_tactic.try_unfold [ idx ]
+    | _ -> Gillian.General.Recovery_tactic.none
+
+  let can_fix = function
+    | SubError (_, _, e) -> S.can_fix e
+    | MissingDomainSet -> true
+    | DomainSetNotFullyOwned -> false
+    | InvalidIndexValue _ -> false
+    | NotAllocated _ -> false
+
+  let get_fixes = function
+    | SubError (idx, idx', e) ->
+        S.get_fixes e
+        |> MyUtils.deep_map @@ MyAsrt.map_cp @@ lift_corepred idx'
+        |> List.map @@ List.cons @@ Formula.Infix.(MyAsrt.Pure idx #== idx')
+    | MissingDomainSet ->
+        let lvar = Expr.LVar (LVar.alloc ()) in
+        [
+          [
+            MyAsrt.CorePred (DomainSet, [], [ lvar ]);
+            MyAsrt.Types [ (lvar, Type.SetType) ];
+          ];
+        ]
+    | _ -> failwith "Called get_fixes on unfixable error"
+end
+
 (** "Base" implementation of an open PMap, with no particular optimisation.
     Takes as modules the backing ExpMap used (%sat or %ent), and the PMapIndex used for
     validating and generating indices. Because this PMap is *open*, it is only compatible
     with static indexing, as dynamic indexing requires a domain set to be sound. *)
 module MakeBaseImpl
     (ExpMap : MyUtils.SymExprMap)
-    (I : PMap.PMapIndex)
+    (I : PMapIndex)
     (S : MyMonadicSMemory.S) =
 struct
   type entry = S.t
   type t = S.t ExpMap.t [@@deriving yojson]
 
+  let mode = I.mode
+  let make_fresh = I.make_fresh
+  let default_instantiation = I.default_instantiation
   let empty = ExpMap.empty
   let fold = ExpMap.fold
   let for_all f = ExpMap.for_all (fun _ v -> f v)
@@ -244,12 +615,15 @@ module BaseImplEnt = MakeBaseImpl (MyUtils.ExpMapEnt)
 (** Implementation of an open PMap with concrete/symbolic split. *)
 module MakeSplitImpl
     (ExpMap : MyUtils.SymExprMap)
-    (I : PMap.PMapIndex)
+    (I : PMapIndex)
     (S : MyMonadicSMemory.S) =
 struct
   type entry = S.t
   type t = S.t ExpMap.t * S.t ExpMap.t [@@deriving yojson]
 
+  let mode = I.mode
+  let make_fresh = I.make_fresh
+  let default_instantiation = I.default_instantiation
   let empty = (ExpMap.empty, ExpMap.empty)
 
   let fold f (ch, sh) acc =
@@ -323,6 +697,9 @@ module ALocImpl (S : MyMonadicSMemory.S) = struct
   type entry = S.t
   type t = S.t MyUtils.SMap.t [@@deriving yojson]
 
+  let mode : index_mode = Static
+  let make_fresh () = ALoc.alloc () |> Expr.loc_from_loc_name |> Delayed.return
+  let default_instantiation = []
   let empty = SMap.empty
   let fold f = SMap.fold (fun k v acc -> f (Expr.loc_from_loc_name k) v acc)
   let for_all f = SMap.for_all (fun _ v -> f v)
@@ -332,10 +709,7 @@ module ALocImpl (S : MyMonadicSMemory.S) = struct
     | Expr.ALoc loc -> loc
     | _ -> failwith "Non-trivial location given to get_loc_fast"
 
-  let validate_index idx =
-    let open Delayed.Syntax in
-    let+ idx_s = MyUtils.get_loc idx in
-    Option.map Expr.loc_from_loc_name idx_s
+  let validate_index idx = DO.map (MyUtils.get_loc idx) Expr.loc_from_loc_name
 
   let get h idx =
     let idx_s = get_loc_fast idx in
