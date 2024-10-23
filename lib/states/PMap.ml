@@ -754,7 +754,12 @@ module ALocImpl (S : MyMonadicSMemory.S) = struct
   let get_loc_fast = function
     | Expr.Lit (Loc loc) -> loc
     | Expr.ALoc loc -> loc
-    | _ -> failwith "Non-trivial location given to get_loc_fast"
+    | e ->
+        failwith
+          (Fmt.str
+             "ALocImpl: get_loc_fast: non-trivial location passed to \
+              get_loc_fast: %a"
+             Expr.pp e)
 
   let validate_index idx = DO.map (MyUtils.get_loc idx) Expr.loc_from_loc_name
 
@@ -764,8 +769,8 @@ module ALocImpl (S : MyMonadicSMemory.S) = struct
     | Some v -> DO.some (idx, v)
     | None -> DO.none ()
 
-  let set ~idx ~idx':_ s h =
-    let idx_s = get_loc_fast idx in
+  let set ~idx:_ ~idx' s h =
+    let idx_s = get_loc_fast idx' in
     if S.is_empty s then SMap.remove idx_s h else SMap.add idx_s s h
 
   let compose h1 h2 =
