@@ -3,7 +3,7 @@ open Gillian.Monadic
 
 type index_mode = Static | Dynamic
 
-module type OpenPMapImpl = sig
+module type PMapImpl = sig
   type entry
   type t [@@deriving yojson]
 
@@ -36,16 +36,12 @@ module type PMapType = sig
 end
 
 module Make
-    (I_Cons : functor
-      (S : MyMonadicSMemory.S)
-      -> OpenPMapImpl with type entry = S.t)
+    (I_Cons : functor (S : MyMonadicSMemory.S) -> PMapImpl with type entry = S.t)
     (S : MyMonadicSMemory.S) :
   PMapType with type entry = S.t and type t = I_Cons(S).t * Expr.t option
 
 module MakeOpen
-    (I_Cons : functor
-      (S : MyMonadicSMemory.S)
-      -> OpenPMapImpl with type entry = S.t)
+    (I_Cons : functor (S : MyMonadicSMemory.S) -> PMapImpl with type entry = S.t)
     (S : MyMonadicSMemory.S) :
   OpenPMapType with type entry = S.t and type t = I_Cons(S).t
 
@@ -67,16 +63,16 @@ type 'e t_split_ent := 'e MyUtils.ExpMapEnt.t * 'e MyUtils.ExpMapEnt.t
 type 'e t_aloc := 'e MyUtils.SMap.t
 
 module BaseImplSat : functor (I : PMapIndex) (S : MyMonadicSMemory.S) ->
-  OpenPMapImpl with type t = S.t t_base_sat and type entry = S.t
+  PMapImpl with type t = S.t t_base_sat and type entry = S.t
 
 module BaseImplEnt : functor (I : PMapIndex) (S : MyMonadicSMemory.S) ->
-  OpenPMapImpl with type t = S.t t_base_ent and type entry = S.t
+  PMapImpl with type t = S.t t_base_ent and type entry = S.t
 
 module SplitImplSat : functor (I : PMapIndex) (S : MyMonadicSMemory.S) ->
-  OpenPMapImpl with type t = S.t t_split_sat and type entry = S.t
+  PMapImpl with type t = S.t t_split_sat and type entry = S.t
 
 module SplitImplEnt : functor (I : PMapIndex) (S : MyMonadicSMemory.S) ->
-  OpenPMapImpl with type t = S.t t_split_ent and type entry = S.t
+  PMapImpl with type t = S.t t_split_ent and type entry = S.t
 
 module ALocImpl : functor (S : MyMonadicSMemory.S) ->
-  OpenPMapImpl with type t = S.t t_aloc and type entry = S.t
+  PMapImpl with type t = S.t t_aloc and type entry = S.t

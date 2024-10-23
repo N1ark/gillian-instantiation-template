@@ -4,9 +4,44 @@ module Subst = Gillian.Symbolic.Subst
 module DR = Delayed_result
 module DO = Delayed_option
 
+(*
+    There are three layers to PMaps: the functor that creates a MyMonadicSMemory module, the implementation
+    module that handles the data structure and operations on it, and (sometimes) the indexing module that
+    handles index creation and validation.
+
+    1. The functor to create the state model transformer, with the actual implementation that satisfies
+       MyMonadicSMemory. There are two variants for it, Make and MakeOpen, creating a state transformer
+       either with or without a domain set, respectively. MakeOpen only works on static PMap implementations.
+
+    2. The module for a PMap implementation, PMapImpl; here by implementation we mean the part of the code
+       that handles the actual data structure. It must expose get/set functions to access the map, some
+       common traversal functions (for_all, fold), and functions relative to indexing. In particular, an
+       implementation is either static or dynamic; if it's static, new indices must be created via
+       allocation, and the module must provide a make_fresh function to create a new address. If it's
+       dynamic, there is no allocation, and new locations are instead created when accessed (eg. object
+       entries in JavaScript), in which case the module has a default_instantiation list, with the
+       arguments to instantiate sub-states with.
+       We note that substitutions and composition are handled by PMapImpl too, to allow for optimisations
+       specific to the data structure; it would be interesting to see if a shared implementation has a
+       good performance too.
+       Currently there exist three PMap implementations: the "base" one that just uses an Expr map, the
+       "split" optimisation that splits the map into a concrete and symbolic part, and the ALoc one that
+       uses abstract locations and indexes on strings.
+
+    3. Some PMap implementations (the "base" one and the split one) also accept a module as input, that
+       represents how the indexing works; this is done via the PMapIndex module type, that specifies
+       if indexing is static or dynamic, and how to generate and validate new indices. Some implementations
+       don't need it (ALoc, to name it), since they rely on a specific indexing method.
+
+    TODO: It would be nice if instead of having Make and MakeOpen, we'd have one "Make" functor
+          that then receives a "discriminator" module that can choose how to handle misses
+          (e.g. a DomainSetDiscriminator, OpenDiscriminator, BoundedDiscriminator...). Would need
+          to assess the performance cost of this, though.
+*)
+
 type index_mode = Static | Dynamic
 
-module type OpenPMapImpl = sig
+module type PMapImpl = sig
   type entry
   type t [@@deriving yojson]
 
@@ -64,9 +99,7 @@ module type PMapType = sig
 end
 
 module Make
-    (I_Cons : functor
-      (S : MyMonadicSMemory.S)
-      -> OpenPMapImpl with type entry = S.t)
+    (I_Cons : functor (S : MyMonadicSMemory.S) -> PMapImpl with type entry = S.t)
     (S : MyMonadicSMemory.S) =
 struct
   module I = I_Cons (S)
@@ -256,7 +289,23 @@ struct
         (h, d)
     | Some _, Some _ -> Delayed.vanish ()
 
-  let is_exclusively_owned _ _ = Delayed.return false
+  let is_exclusively_owned (h, d) e =
+    match d with
+    | None -> Delayed.return false
+    | Some (Expr.ESet d) ->
+        let size = I.fold (fun _ _ acc -> acc + 1) h 0 in
+        (* Here we do the assumption that all indices in the heap correspond to semantically
+           different indices. This is not always the case (eg. ALocs)! But good enough in many
+           cases and avoids crazy O(N!) branching. *)
+        if size == List.length d then
+          let open Delayed.Syntax in
+          I.fold
+            (fun _ v acc ->
+              let* acc_v = acc in
+              if not acc_v then acc else S.is_exclusively_owned v e)
+            h (Delayed.return true)
+        else Delayed.return false
+    | Some _ -> failwith "Invalid domain set"
 
   let is_empty = function
     | _, Some _ -> false
@@ -342,9 +391,7 @@ struct
 end
 
 module MakeOpen
-    (I_Cons : functor
-      (S : MyMonadicSMemory.S)
-      -> OpenPMapImpl with type entry = S.t)
+    (I_Cons : functor (S : MyMonadicSMemory.S) -> PMapImpl with type entry = S.t)
     (S : MyMonadicSMemory.S) =
 struct
   module I = I_Cons (S)
