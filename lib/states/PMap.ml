@@ -583,10 +583,7 @@ end
 
 module StringIndex : PMapIndex = struct
   let mode = Dynamic
-
-  let is_valid_index = function
-    | l -> Delayed.return (Some l)
-
+  let is_valid_index = DO.some ~learned:[]
   let make_fresh () = failwith "Invalid in dynamic mode"
   let default_instantiation = []
 end
