@@ -25,7 +25,7 @@ module type OpenPMapType = sig
 
   type entry
 
-  val get : t -> Expr.t -> (Expr.t * entry, err_t) result Delayed.t
+  val get : t -> Expr.t -> (t * Expr.t * entry, err_t) result Delayed.t
   val set : idx:Expr.t -> idx':Expr.t -> entry -> t -> t
 end
 

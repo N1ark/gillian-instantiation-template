@@ -88,7 +88,7 @@ module type OpenPMapType = sig
 
   type entry
 
-  val get : t -> Expr.t -> (Expr.t * entry, err_t) DR.t
+  val get : t -> Expr.t -> (t * Expr.t * entry, err_t) DR.t
   val set : idx:Expr.t -> idx':Expr.t -> entry -> t -> t
 end
 
@@ -169,22 +169,6 @@ struct
          (fun (p, ins, outs) -> (SubPred p, "index" :: ins, outs))
          (S.list_preds ())
 
-  let get (h, d) idx =
-    let open Delayed.Syntax in
-    let* idx_opt = I.validate_index idx in
-    match idx_opt with
-    | None -> DR.error (InvalidIndexValue idx)
-    | Some idx' -> (
-        let* res = I.get h idx' in
-        match (res, d) with
-        | Some res, _ -> DR.ok res
-        | None, None -> DR.ok (idx', S.empty ())
-        | None, Some d ->
-            if%sat Formula.SetMem (idx', d) then DR.ok (idx', S.empty ())
-            else DR.error (NotAllocated idx'))
-
-  let set ~idx ~idx' entry ((h, d) : t) = (I.set ~idx ~idx' entry h, d)
-
   let domain_add k ((h, d) : t) =
     match d with
     | None -> (h, d)
@@ -195,6 +179,32 @@ struct
            to make this function return a Expr.t Delayed.t, adding to the PC that the key is in
            the set. *)
         failwith "Invalid index set; expected a set"
+
+  let get ((h, d) as s) idx =
+    let open Delayed.Syntax in
+    let* idx_opt = I.validate_index idx in
+    match idx_opt with
+    | None -> DR.error (InvalidIndexValue idx)
+    | Some idx' -> (
+        let* res = I.get h idx' in
+        match (res, d) with
+        | Some (idx', ss), _ -> DR.ok (s, idx', ss)
+        | None, None -> DR.ok (s, idx', S.empty ())
+        | None, Some d -> (
+            if%sat Formula.SetMem (idx', d) then DR.ok (s, idx', S.empty ())
+            else
+              match I.mode with
+              | Static ->
+                  Logging.normal (fun f ->
+                      f "STATIC NotAllocated: %a" Expr.pp idx');
+                  DR.error (NotAllocated idx')
+              | Dynamic ->
+                  let ss, _ = S.instantiate I.default_instantiation in
+                  let h' = I.set ~idx:idx' ~idx':idx ss h in
+                  let s' = (h', Some d) |> domain_add idx' in
+                  DR.ok (s', idx', ss)))
+
+  let set ~idx ~idx' entry ((h, d) : t) = (I.set ~idx ~idx' entry h, d)
 
   let lifting_err idx idx' v fn =
     match v with
@@ -209,7 +219,8 @@ struct
     match (action, args) with
     | SubAction _, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args ->
-        let** idx', ss = get s idx in
+        let** s, idx', ss = get s idx in
+        let* () = Delayed.return ~learned:[ Formula.Eq (idx, idx') ] () in
         let+ r = S.execute_action action ss args in
         let ( let+^ ) = lifting_err idx idx' in
         let+^ ss', v = r in
@@ -248,7 +259,7 @@ struct
     match (pred, ins) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: ins ->
-        let** idx', ss = get s idx in
+        let** s, idx', ss = get s idx in
         let+ r = S.consume pred ss ins in
         let ( let+^ ) = lifting_err idx idx' in
         let+^ ss', v = r in
@@ -266,7 +277,7 @@ struct
     match (pred, args) with
     | SubPred _, [] -> failwith "Missing index for sub-predicate"
     | SubPred pred, idx :: args ->
-        let*? idx', ss = get s idx in
+        let*? s, idx', ss = get s idx in
         let+ ss' = S.produce pred ss args in
         set ~idx ~idx' ss' s
     | DomainSet, [ d' ] -> (
@@ -446,8 +457,8 @@ struct
     | Some idx' -> (
         let* res = I.get s idx' in
         match res with
-        | None -> DR.ok (idx', S.empty ())
-        | Some res -> DR.ok res)
+        | None -> DR.ok (s, idx', S.empty ())
+        | Some (idx', ss) -> DR.ok (s, idx', ss))
 
   let set = I.set
 
@@ -464,7 +475,7 @@ struct
     match (action, args) with
     | SubAction _, [] -> failwith "Missing index for sub-action"
     | SubAction action, idx :: args ->
-        let** idx', ss = get s idx in
+        let** s, idx', ss = get s idx in
         let+ r = S.execute_action action ss args in
         let ( let+^ ) = lifting_err idx idx' in
         let+^ ss', v = r in
@@ -482,7 +493,7 @@ struct
     match ins with
     | [] -> failwith "Missing index for sub-predicate"
     | idx :: ins ->
-        let** idx', ss = get s idx in
+        let** s, idx', ss = get s idx in
         let+ r = S.consume pred ss ins in
         let ( let+^ ) = lifting_err idx idx' in
         let+^ ss', v = r in
@@ -495,7 +506,7 @@ struct
     match args with
     | [] -> failwith "Missing index for sub-predicate"
     | idx :: args ->
-        let*? idx', ss = get s idx in
+        let*? s, idx', ss = get s idx in
         let+ ss' = S.produce pred ss args in
         set ~idx ~idx' ss' s
 

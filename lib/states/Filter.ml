@@ -19,19 +19,9 @@ module Make (Filter : FilterVals) (S : MyMonadicSMemory.S) :
   let keep_pred s = filter (List.mem s Filter.preds_filters)
 
   let list_actions () =
-    let before = S.list_actions () in
-    let filtered =
-      List.filter
-        (fun (a, _, _) -> keep_action (S.action_to_str a))
-        (S.list_actions ())
-    in
-    let pp_la f a = Format.fprintf f "%s" (S.action_to_str a) in
-    Fmt.pr "List actions: before: %a / after: %a"
-      Fmt.(list pp_la)
-      (List.map (fun (a, _, _) -> a) before)
-      Fmt.(list pp_la)
-      (List.map (fun (a, _, _) -> a) filtered);
-    filtered
+    List.filter
+      (fun (a, _, _) -> keep_action @@ S.action_to_str a)
+      (S.list_actions ())
 
   let action_from_str s = if keep_action s then S.action_from_str s else None
 
@@ -40,7 +30,9 @@ module Make (Filter : FilterVals) (S : MyMonadicSMemory.S) :
     else failwith "Cannot convert hidden action to string"
 
   let list_preds () =
-    List.filter (fun (p, _, _) -> keep_pred (S.pred_to_str p)) (S.list_preds ())
+    List.filter
+      (fun (p, _, _) -> keep_pred @@ S.pred_to_str p)
+      (S.list_preds ())
 
   let pred_from_str s = if keep_pred s then S.pred_from_str s else None
 
